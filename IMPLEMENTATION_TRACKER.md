@@ -108,6 +108,16 @@ The Phase 2 prototype is intentionally design-only. No production mobile screens
 been implemented yet. AI estimation, photo analysis, voice input, chat, and wellness
 insights remain Phase 3 scope.
 
+## Product quality constraint
+
+The first functional mobile implementation is explicitly a v0 validation build. A
+boxy or utilitarian visual treatment is acceptable during flow validation, but it is
+not the final product direction. Before delivery, Phase 4 must include a substantial
+UX/UI refinement pass covering visual hierarchy, spacing, typography, component
+consistency, native interactions, motion, empty states, loading states, error recovery,
+and perceived polish. Functional completion alone does not satisfy the final quality
+bar.
+
 ## Credential requests
 
 Request credentials only at the phase where they are required. Never commit secrets.
