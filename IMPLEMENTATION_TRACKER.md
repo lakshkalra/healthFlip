@@ -9,7 +9,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 | --- | --- | --- |
 | Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, Android emulator launch, and iOS simulator build/launch verified |
 | Phase 1 - Backend foundation | COMPLETE | Separate API repository, centralized table schemas, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
-| Phase 2 - Mobile core flows | IN PROGRESS | Claude design handoff implemented and verified on iOS; v0 flows manually verified against local PostgreSQL-backed API; restart persistence and deployed API verification remain |
+| Phase 2 - Mobile core flows | COMPLETE | v0 mobile flows, restart persistence, hosted API CRUD, and fresh Android hosted-API launch verified |
 | Phase 3 - AI operations | NOT STARTED | - |
 | Phase 4 - UX polish and edge cases | NOT STARTED | - |
 | Phase 5 - Delivery and self-assessment | NOT STARTED | - |
@@ -125,7 +125,7 @@ an internal data-scoping mechanism only.
 - [x] Add or update automated coverage for the changed API/mobile contracts.
 - [x] Apply the new local database migration and verify the full manual flow.
 - [x] Verify goal and meals survive a complete app restart.
-- [ ] Verify the same flow against a deployed API endpoint after GitHub/Vercel/database access is authorized.
+- [x] Verify the same flow against the deployed Vercel API and Neon database.
 
 - [x] Finalize the first-run goal setup flow.
 - [x] Finalize the daily dashboard flow.
@@ -140,7 +140,7 @@ an internal data-scoping mechanism only.
 - [x] Run lint, Jest, TypeScript, Android build, and local emulator verification.
 - [x] Implement and verify the Claude design handoff on the iOS simulator.
 - [x] Verify data survives a complete app restart.
-- [ ] Verify the mobile app against the deployed API endpoint.
+- [x] Verify the mobile app against the deployed API endpoint.
 
 ## Phase 2 implementation evidence
 
@@ -176,6 +176,15 @@ an internal data-scoping mechanism only.
   choosing a suggestion, under Lunch at 510 kcal; the dashboard updated to 510 / 2000
   kcal, and the same goal, meal, total, and category were present after force-closing
   and reopening the app.
+- Hosted API verification: `https://healthflip-api.vercel.app/health` and `/health/db`
+  returned HTTP 200; the hosted guest, goal, meal, dashboard, and meal-delete flow
+  passed against Neon. The dashboard returned 510 total calories, 1 meal, and the
+  persisted `lunch` category before the exact temporary meal was deleted.
+- Hosted mobile verification: the mobile API client now targets the deployed Vercel
+  service; a fresh Android emulator install launched cleanly, bootstrapped an anonymous
+  guest, saved the 2,000 kcal goal, and rendered the dashboard from the hosted API.
+- Android debug build: passed with the emulator active architecture optimization;
+  the universal APK install was skipped because the AVD internal volume was nearly full.
 
 The authoritative functional flow is documented in
 `docs/phase-2-flow-spec.md`. The Claude design handoff is sufficient for v0 flow

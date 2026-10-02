@@ -1,12 +1,7 @@
-import { Platform } from 'react-native';
-
 import type { Dashboard, Goal, GoalType, Meal } from '../types';
 import { getGuestToken, saveGuestToken } from '../storage/session';
 
-const API_BASE_URL = Platform.select({
-  android: 'http://10.0.2.2:3000',
-  default: 'http://127.0.0.1:3000',
-});
+const API_BASE_URL = 'https://healthflip-api.vercel.app';
 
 type ApiErrorPayload = { error?: { message?: string } };
 
