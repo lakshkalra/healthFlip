@@ -9,7 +9,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 | --- | --- | --- |
 | Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, and Android emulator launch verified |
 | Phase 1 - Backend foundation | COMPLETE | Separate API repository, centralized table schemas, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
-| Phase 2 - Mobile core flows | IN PROGRESS | v0 flows implemented and manually verified against local PostgreSQL-backed API; deployed-backend and restart checks remain |
+| Phase 2 - Mobile core flows | IN PROGRESS | Functional flow specification documented; v0 flows manually verified against local PostgreSQL-backed API; Figma styling and final acceptance remain |
 | Phase 3 - AI operations | NOT STARTED | - |
 | Phase 4 - UX polish and edge cases | NOT STARTED | - |
 | Phase 5 - Delivery and self-assessment | NOT STARTED | - |
@@ -100,9 +100,10 @@ validation path.
 - [x] Finalize meal detail, edit, and delete behavior.
 - [x] Create a visual prototype for UI review before mobile implementation.
 - [x] Establish implementation constraints: reusable components, minimal code, and no scope beyond the Phase 2 requirements.
-- [x] Review the prototype and approve the v0 UI direction.
+- [x] Review the prototype and approve the v0 functional direction.
 - [x] Define the mobile component and navigation structure.
 - [x] Implement the v0 flows with reusable primitives and a small API client.
+- [x] Document the complete Phase 2 page-by-page functional flow.
 - [x] Run lint, Jest, TypeScript, Android build, and local emulator verification.
 - [ ] Verify data survives a complete app restart.
 - [ ] Verify the mobile app against the deployed API endpoint.
@@ -124,8 +125,12 @@ validation path.
   meal saved to PostgreSQL, dashboard updated to 380 / 2000 kcal, and meal detail opened.
 - Homepage design pass: implemented the provided visual direction with a light canvas,
   lime progress hero, circular progress ring, date strip, soft meal card, and quieter
-  bottom navigation. This is still the v0 visual layer; the larger Phase 4 polish pass
-  remains required.
+  bottom navigation. Styling is now paused pending the user’s Figma design; the larger
+  Phase 4 polish pass remains required.
+
+The authoritative functional flow is documented in
+`docs/phase-2-flow-spec.md`. Figma styling is a prerequisite for the next UI pass, but
+does not change the API behavior or page responsibilities defined there.
 
 The Phase 2 prototype is intentionally design-only. No production mobile screens have
 been implemented yet. AI estimation, photo analysis, voice input, chat, and wellness
