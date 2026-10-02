@@ -8,7 +8,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 | Phase | Status | Completion evidence |
 | --- | --- | --- |
 | Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, and Android emulator launch verified |
-| Phase 1 - Backend foundation | NOT STARTED | - |
+| Phase 1 - Backend foundation | COMPLETE | Schema, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
 | Phase 2 - Mobile core flows | NOT STARTED | - |
 | Phase 3 - AI operations | NOT STARTED | - |
 | Phase 4 - UX polish and edge cases | NOT STARTED | - |
@@ -67,6 +67,29 @@ validation path.
 1. Accept the Apple Xcode SDK licence when iOS work resumes.
 2. Install a supported Ruby/CocoaPods toolchain, then run the iOS pod install.
 3. Select Xcode 27 as the active developer directory and launch on the iPhone 15 Pro.
+
+## Phase 1 checklist
+
+- [x] Add typed configuration, shared errors, validation, auth, and timezone helpers.
+- [x] Add Drizzle schema and checked-in SQL migration for guests, guest sessions, goals, and meal entries.
+- [x] Add reusable controller, service, repository, and schema modules for guests, goals, meals, and dashboard.
+- [x] Add anonymous token authentication with only a token hash persisted to PostgreSQL.
+- [x] Add guest-scoped goal, meal, and daily dashboard API routes.
+- [x] Add local development and isolated integration-test database workflows.
+- [x] Add API integration tests for authorization, validation, goal history, guest ownership, deletion, and daily aggregation.
+- [x] Document the backend architecture, migrations, test workflow, and Vercel project-root configuration.
+- [x] Verify mobile lint/tests, backend typecheck, migration validation, integration tests, and production dependency audit.
+- [x] Record the Phase 1 completion commit.
+
+## Phase 1 verification log
+
+- Drizzle migration generation: passed; initial schema and database-constraint migrations generated and checked.
+- Development and test database migration: passed.
+- Backend integration suite: passed; 4 tests covering unauthorized access, invalid input, goal replacement/ownership, and daily totals after deletion.
+- Backend typecheck: passed.
+- Mobile lint and Jest suite: passed.
+- Production dependency audit: passed; zero known vulnerabilities.
+- Vercel preparation: complete; deploy `backend/` as the project root and provide `DATABASE_URL` after user authorization. No Vercel or managed-database credentials requested yet.
 
 ## Credential requests
 

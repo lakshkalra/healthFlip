@@ -14,6 +14,13 @@ acceptance criteria, verification evidence, and blockers.
 - Fastify API boundary in `backend/`.
 - Docker Compose PostgreSQL configuration for local development.
 
+## Backend foundation
+
+The Phase 1 backend is structured into guest, goals, meals, and dashboard modules,
+with controller, service, repository, and validation boundaries. See
+[`backend/README.md`](./backend/README.md) for local setup, migrations, testing, and
+Vercel deployment preparation.
+
 The mobile app and backend feature flows will be added only after Phase 0's
 environment and launch checks are complete.
 
