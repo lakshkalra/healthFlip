@@ -122,6 +122,10 @@ validation path.
 - Android debug build: passed with AsyncStorage native integration.
 - Android emulator manual check: passed; goal saved, dashboard loaded from local API,
   meal saved to PostgreSQL, dashboard updated to 380 / 2000 kcal, and meal detail opened.
+- Homepage design pass: implemented the provided visual direction with a light canvas,
+  lime progress hero, circular progress ring, date strip, soft meal card, and quieter
+  bottom navigation. This is still the v0 visual layer; the larger Phase 4 polish pass
+  remains required.
 
 The Phase 2 prototype is intentionally design-only. No production mobile screens have
 been implemented yet. AI estimation, photo analysis, voice input, chat, and wellness
