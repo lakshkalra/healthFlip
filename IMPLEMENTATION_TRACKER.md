@@ -66,6 +66,16 @@ validation path.
 2. Install a supported Ruby/CocoaPods toolchain, then run the iOS pod install.
 3. Select Xcode 27 as the active developer directory and launch on the iPhone 15 Pro.
 
+Current iOS setup check on 2026-10-02:
+
+- Xcode 27.0 (`27A266a`) is installed and opens successfully.
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -version` passed.
+- The system-wide developer directory is still Command Line Tools; changing it requires
+  macOS administrator authentication, which was not requested or entered.
+- Xcode currently reports zero available iOS runtimes and zero simulator devices.
+- The Simulator cannot launch until an iOS runtime is installed from Xcode Settings >
+  Components.
+
 ## Phase 1 checklist
 
 - [x] Add typed configuration, shared errors, validation, auth, and timezone helpers.
