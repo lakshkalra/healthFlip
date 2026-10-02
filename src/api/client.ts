@@ -113,6 +113,15 @@ export async function estimateMeal(description: string, mealType: MealType): Pro
   return response.estimate;
 }
 
+export async function estimateMealFromImage(imageBase64: string, mimeType: 'image/jpeg' | 'image/png' | 'image/webp', mealType: MealType): Promise<AiMealEstimate> {
+  await ensureGuest();
+  const response = await request<{ estimate: AiMealEstimate }>('/v1/ai/meal-estimate-image', {
+    body: JSON.stringify({ imageBase64, mealType, mimeType }),
+    method: 'POST',
+  });
+  return response.estimate;
+}
+
 export async function getDailyInsight(date = dateKey()): Promise<DailyInsight> {
   await ensureGuest();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';

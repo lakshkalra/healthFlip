@@ -225,7 +225,7 @@ input, chat, and wellness insights remain Phase 3 scope.
 - Backend typecheck: passed.
 - Backend test suite: passed; 7 tests covering existing API behavior, fallback
   estimation, persisted-context insights, validation, and provider timeout mapping.
-- Gemini, voice input, image input, and mobile AI UI remain pending.
+- Gemini remains pending; voice input, image input, and the first mobile AI UI slice are now implemented.
 
 ### Phase 3 mobile integration evidence (2026-10-02)
 
@@ -243,15 +243,29 @@ input, chat, and wellness insights remain Phase 3 scope.
 - Android debug build/install: passed on `emulator-5554`; `com.healthflip` launched.
 - Android Studio reports an AGP 9.2.1 compatibility warning during IDE sync; the
   command-line React Native build and installation are successful.
+- Voice input: added a native speech-recognition adapter with runtime microphone
+  permission handling, partial/final transcript updates, and an unavailable-device
+  fallback that preserves manual entry.
+- Image input: added camera/library selection, resize/quality limits, supported MIME
+  validation, preview, and a reviewable fallback estimate through the new image API route.
+- Native dependency audit: passed with 0 vulnerabilities after replacing the deprecated
+  voice package with `react-native-speech-recognition-kit`.
+- iOS pods: passed; image picker and speech recognition autolinked.
+- iOS simulator build: passed with the new native modules and permission strings.
+- Android debug build/install: passed with the new native modules and `RECORD_AUDIO`
+  manifest permission.
+- Image API smoke test: passed; `POST /v1/ai/meal-estimate-image` returned HTTP 200 with
+  a structured fallback estimate.
 
 ### Phase 3 remaining checklist
 
 - [ ] Add and verify the live Gemini provider adapter (requires Gemini API key).
 - [x] Connect text meal estimation to the mobile meal-entry flow using the fallback provider.
 - [x] Connect Kimbo's persisted daily insight to the mobile dashboard.
-- [ ] Add voice input with deterministic unavailable-provider behavior.
-- [ ] Add image input with deterministic unavailable-provider behavior.
+- [x] Add voice input with deterministic unavailable-provider behavior.
+- [x] Add image input with deterministic unavailable-provider behavior.
 - [ ] Add AI-specific mobile interaction tests for estimate success and failure.
+- [ ] Add and verify the live Gemini image provider adapter (requires Gemini API key).
 - [ ] Complete end-to-end Phase 3 manual verification and mark the phase `COMPLETE`.
 
 The authoritative Phase 3 contract is documented in

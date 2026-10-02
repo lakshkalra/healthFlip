@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { createMeal, deleteMeal, estimateMeal, getCurrentGoal, getDailyInsight, getDashboard, saveGoal, updateMeal, type DailyInsight, type MealInput } from './src/api/client';
+import { createMeal, deleteMeal, estimateMeal, estimateMealFromImage, getCurrentGoal, getDailyInsight, getDashboard, saveGoal, updateMeal, type DailyInsight, type MealInput } from './src/api/client';
+import { chooseMealImage, VoiceCaptureButton, type MealImage } from './src/media';
 import { ProgressScreen } from './src/progress';
 import { RewardsScreen } from './src/rewards';
 import { TipsScreen } from './src/tips';
@@ -729,6 +730,8 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
   const [aiDescription, setAiDescription] = useState('');
   const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'fail'>('idle');
   const [aiEstimate, setAiEstimate] = useState<{ assumptions: string[]; source: 'ai' | 'fallback' } | null>(null);
+  const [image, setImage] = useState<MealImage | null>(null);
+  const [imageStatus, setImageStatus] = useState<'idle' | 'loading' | 'fail'>('idle');
   const saving = status === 'saving';
 
   const update = (patch: Partial<MealForm>) => {
@@ -773,6 +776,25 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
     }
   }
 
+  async function handleImage(source: 'camera' | 'library') {
+    if (imageStatus === 'loading') return;
+    setImageStatus('loading');
+    try {
+      const selected = await chooseMealImage(source);
+      if (!selected) {
+        setImageStatus('idle');
+        return;
+      }
+      setImage(selected);
+      const estimate = await estimateMealFromImage(selected.base64, selected.mimeType, form.type);
+      update({ name: estimate.name, cal: String(estimate.caloriesKcal), p: toText(estimate.proteinGrams), c: toText(estimate.carbsGrams), f: toText(estimate.fatGrams) });
+      setAiEstimate({ assumptions: estimate.assumptions, source: estimate.source });
+      setImageStatus('idle');
+    } catch {
+      setImageStatus('fail');
+    }
+  }
+
   const macroField = (key: 'p' | 'c' | 'f', label: string) => (
     <View style={[ui.flex, screen.gap4]}>
       <InputShell error={!!errors[key]} style={screen.macroShell}>
@@ -810,9 +832,23 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
             <InputShell>
               <TextInput accessibilityLabel="AI meal description" value={aiDescription} onChangeText={setAiDescription} placeholder="e.g. 2 eggs with toast" placeholderTextColor={colors.faint} style={screen.aiInput} />
             </InputShell>
+            <View style={screen.mediaRow}>
+              <VoiceCaptureButton onText={setAiDescription} style={screen.mediaGrow} />
+              <Pressable accessibilityLabel="Choose meal photo" accessibilityRole="button" disabled={imageStatus === 'loading'} onPress={() => handleImage('library')} style={({ pressed }) => [screen.mediaButton, pressed && screen.mediaButtonPressed]}>
+                <Icon name="image" color={colors.greenDark} size={18} />
+                <Text style={screen.mediaButtonText}>Photo</Text>
+              </Pressable>
+              <Pressable accessibilityLabel="Take meal photo" accessibilityRole="button" disabled={imageStatus === 'loading'} onPress={() => handleImage('camera')} style={({ pressed }) => [screen.mediaButton, pressed && screen.mediaButtonPressed]}>
+                <Icon name="camera" color={colors.greenDark} size={18} />
+                <Text style={screen.mediaButtonText}>Camera</Text>
+              </Pressable>
+            </View>
+            {image ? <View style={screen.imagePreviewRow}><Image accessibilityLabel="Selected meal photo" source={{ uri: image.uri }} style={screen.imagePreview} /><Text style={screen.aiNote}>Photo selected. Review the rough wellness estimate before saving.</Text></View> : null}
             <PillButton title="Estimate with AI" icon="leaf" variant="light" height={46} busy={aiStatus === 'loading'} busyLabel="Estimating…" onPress={handleEstimate} />
             {aiEstimate ? <Text style={screen.aiNote}>{aiEstimate.assumptions.join(' ')}</Text> : null}
             {aiStatus === 'fail' ? <Banner message="AI estimate unavailable. You can still enter the meal manually." /> : null}
+            {imageStatus === 'loading' ? <Text style={screen.aiNote}>Preparing your photo…</Text> : null}
+            {imageStatus === 'fail' ? <Banner message="Photo analysis unavailable. You can still describe the meal or enter it manually." /> : null}
           </Card>
         ) : null}
         <View style={screen.gap6}>
@@ -1074,6 +1110,13 @@ const screen = StyleSheet.create({
   aiCard: { backgroundColor: colors.pale, gap: 10, padding: 14 },
   aiInput: { color: colors.ink, flex: 1, fontSize: 15, minWidth: 0, padding: 0 },
   aiNote: { color: colors.muted, fontSize: 12, lineHeight: 17 },
+  mediaRow: { flexDirection: 'row', gap: 8 },
+  mediaGrow: { flex: 1 },
+  mediaButton: { alignItems: 'center', backgroundColor: colors.white, borderRadius: 14, flexDirection: 'row', gap: 6, minHeight: 46, paddingHorizontal: 12 },
+  mediaButtonPressed: { backgroundColor: colors.selected },
+  mediaButtonText: { color: colors.greenDark, fontSize: 13, fontWeight: '800' },
+  imagePreviewRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  imagePreview: { borderRadius: 12, height: 54, width: 54 },
   chevron: { alignItems: 'center', height: 28, justifyContent: 'center', width: 28 },
   picker: { backgroundColor: colors.white, borderRadius: 18, boxShadow: '0 0 0 1.5px #e6eadc, 0 8px 18px rgba(28,31,26,.08)', marginTop: 2, padding: 6 },
   pickerList: { maxHeight: 232 },
