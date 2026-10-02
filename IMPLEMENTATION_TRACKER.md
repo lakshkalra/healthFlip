@@ -213,7 +213,19 @@ input, chat, and wellness insights remain Phase 3 scope.
 - [x] Define deterministic fallback behavior and structured AI failure codes.
 - [x] Define wellness-only safety language, validation, timeout, quota, and logging rules.
 - [x] Confirm the first AI slice requires no database migration.
-- [ ] Implement the fallback backend slice in `healthflip-api`.
+- [x] Implement the fallback backend slice in `healthflip-api`.
+
+### Phase 3.1 fallback backend evidence
+
+- Added the reusable `ai` controller/service/router/helper/validator module.
+- Added provider-independent contracts with a deterministic fallback provider.
+- Added `POST /v1/ai/meal-estimate` and `GET /v1/ai/daily-insight`.
+- Fallback insights read the persisted guest goal and daily meals through existing
+  repositories; no new table or duplicate SQL was introduced.
+- Backend typecheck: passed.
+- Backend test suite: passed; 7 tests covering existing API behavior, fallback
+  estimation, persisted-context insights, validation, and provider timeout mapping.
+- Gemini, voice input, image input, and mobile AI UI remain pending.
 
 The authoritative Phase 3 contract is documented in
 `healthflip-api/docs/phase-3-ai-spec.md`. No Gemini credential is required until the
