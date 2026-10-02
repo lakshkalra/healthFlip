@@ -10,7 +10,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 | Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, Android emulator launch, and iOS simulator build/launch verified |
 | Phase 1 - Backend foundation | COMPLETE | Separate API repository, centralized table schemas, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
 | Phase 2 - Mobile core flows | COMPLETE | v0 mobile flows, restart persistence, hosted API CRUD, and fresh Android hosted-API launch verified |
-| Phase 3 - AI operations | NOT STARTED | - |
+| Phase 3 - AI operations | IN PROGRESS | Phase 3.0 contracts and safety boundary finalized; backend implementation has not started |
 | Phase 4 - UX polish and edge cases | NOT STARTED | - |
 | Phase 5 - Delivery and self-assessment | NOT STARTED | - |
 
@@ -204,6 +204,20 @@ validation; the larger Phase 4 polish pass remains required.
 
 Production v0 mobile screens are now implemented. AI estimation, photo analysis, voice
 input, chat, and wellness insights remain Phase 3 scope.
+
+## Phase 3.0 AI contract checkpoint
+
+- [x] Define provider-independent text meal-estimation contract.
+- [x] Define Kimbo daily-insight contract using persisted goal and meal data.
+- [x] Define the backend `ai` module and shared provider adapter boundaries.
+- [x] Define deterministic fallback behavior and structured AI failure codes.
+- [x] Define wellness-only safety language, validation, timeout, quota, and logging rules.
+- [x] Confirm the first AI slice requires no database migration.
+- [ ] Implement the fallback backend slice in `healthflip-api`.
+
+The authoritative Phase 3 contract is documented in
+`healthflip-api/docs/phase-3-ai-spec.md`. No Gemini credential is required until the
+provider adapter step after the fallback API is tested.
 
 ## Product quality constraint
 
