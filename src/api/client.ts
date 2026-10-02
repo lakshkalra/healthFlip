@@ -1,7 +1,8 @@
 import type { Dashboard, Goal, GoalType, Meal } from '../types';
+import { dateKey } from '../meals';
 import { getGuestToken, saveGuestToken } from '../storage/session';
 
-const API_BASE_URL = 'https://healthflip-api.vercel.app';
+const API_BASE_URL = __DEV__ ? 'http://10.0.2.2:3000' : 'https://healthflip-api.vercel.app';
 
 type ApiErrorPayload = { error?: { message?: string } };
 
@@ -46,15 +47,15 @@ export async function getCurrentGoal(): Promise<Goal | null> {
 export async function saveGoal(input: { dailyCalorieTarget: number; type: GoalType }): Promise<Goal> {
   await ensureGuest();
   const response = await request<{ goal: Goal }>('/v1/goals/current', {
-    body: JSON.stringify({ ...input, startsOn: today() }),
+    body: JSON.stringify({ ...input, startsOn: dateKey() }),
     method: 'PUT',
   });
   return response.goal;
 }
 
-export async function getDashboard(): Promise<Dashboard> {
+/** Daily dashboard for a local calendar date (defaults to today). */
+export async function getDashboard(date = dateKey()): Promise<Dashboard> {
   await ensureGuest();
-  const date = today();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const response = await request<{ dashboard: Dashboard }>(
     `/v1/dashboard/daily?date=${date}&timezone=${encodeURIComponent(timezone)}`,
@@ -94,9 +95,3 @@ export type MealInput = {
   note?: string;
   proteinGrams?: number;
 };
-
-/** Local calendar date (YYYY-MM-DD); toISOString() would give the UTC date and be a day off near midnight. */
-function today(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}

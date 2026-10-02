@@ -3,10 +3,14 @@ import { Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, Tex
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createMeal, deleteMeal, getCurrentGoal, getDashboard, saveGoal, updateMeal, type MealInput } from './src/api/client';
+import { ProgressScreen } from './src/progress';
+import { RewardsScreen } from './src/rewards';
+import { TipsScreen } from './src/tips';
 import {
   FOODS,
   GOALS,
   MEAL_TYPES,
+  dateKey,
   formatNumber,
   formatTime,
   goalLabel,
@@ -27,6 +31,7 @@ import {
   IconTile,
   InputShell,
   MacroBar,
+  MealGroupCard,
   MealTypeTile,
   NumberInput,
   Overlay,
@@ -40,9 +45,12 @@ import {
   type IconName,
 } from './src/ui';
 
-type Route = 'boot' | 'goal' | 'dash' | 'detail';
+type Tab = 'home' | 'progress' | 'rewards' | 'tips';
+type Route = 'boot' | 'goal' | 'detail' | Tab;
 type BootState = 'loading' | 'first' | 'returning' | 'error';
 type DashState = 'loading' | 'ready' | 'refreshing' | 'fail' | 'error';
+type MealTypes = Record<string, MealType>;
+
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 function App() {
@@ -61,15 +69,23 @@ function Root() {
   const [target, setTarget] = useState(2000);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dash, setDash] = useState<DashState>('loading');
+  const [mealTypes, setMealTypes] = useState<MealTypes>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editingGoal, setEditingGoal] = useState(false);
   const [sheet, setSheet] = useState<{ open: boolean; mode: 'add' | 'edit'; type: MealType; key: number }>({ open: false, mode: 'add', type: 'breakfast', key: 0 });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, key: 0 });
   const [toast, setToast] = useState('');
+  const [viewing, setViewing] = useState<Dashboard | null>(null);
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [progressPop, setProgressPop] = useState(0);
+  const [tipsPop, setTipsPop] = useState(0);
+  const [editingGoal, setEditingGoal] = useState<{ dailyCalorieTarget: number; type: GoalType } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const dashBusy = useRef(false);
+  const activeTab: Tab | null = route === 'home' || route === 'progress' || route === 'rewards' || route === 'tips' ? route : null;
 
-  const selected = dashboard?.meals.find(meal => meal.id === selectedId) ?? null;
+  // Selected meal looks up in today's dashboard first, then in any past day being viewed.
+  const selected = dashboard?.meals.find(meal => meal.id === selectedId) ?? viewing?.meals.find(meal => meal.id === selectedId) ?? null;
+  const selectedEditable = !!dashboard?.meals.some(meal => meal.id === selectedId);
   const dailyTarget = dashboard?.goal?.dailyCalorieTarget ?? target;
 
   const flash = useCallback((message: string) => {
@@ -92,26 +108,34 @@ function Root() {
     }
   }, []);
 
+  // Bumped after any save/delete, so the Progress tab's cached history refetches.
+  const bumpHistory = useCallback(() => setHistoryVersion(current => current + 1), []);
+
   const start = useCallback(async () => {
     setRoute('boot');
     setBoot('loading');
     try {
       const goal = await getCurrentGoal();
+      setTarget(goal?.dailyCalorieTarget ?? 2000);
       if (!goal) {
         setBoot('first');
         await wait(1200);
         setRoute('goal');
         return;
       }
-      setTarget(goal.dailyCalorieTarget);
       setBoot('returning');
       setDashboard(await getDashboard());
       setDash('ready');
-      setRoute('dash');
+      setRoute('home');
     } catch {
       setBoot('error');
     }
   }, []);
+
+  // If the open meal disappears after a refresh, fall back to the home tab instead of a blank page.
+  useEffect(() => {
+    if (route === 'detail' && !selected) setRoute('home');
+  }, [route, selected]);
 
   useEffect(() => {
     start();
@@ -121,61 +145,110 @@ function Root() {
   async function handleGoalSaved(goal: { dailyCalorieTarget: number; type: GoalType }) {
     const saved = await saveGoal(goal);
     setTarget(saved.dailyCalorieTarget);
-    setRoute('dash');
+    setEditingGoal(null);
+    setRoute('home');
     loadDashboard(true);
+    bumpHistory();
   }
 
-  function handleMealSaved(mode: 'add' | 'edit') {
+  function handleMealSaved(types: MealTypes, mode: 'add' | 'edit') {
+    setMealTypes(types);
     setSheet(current => ({ ...current, open: false }));
-    setRoute('dash');
+    setViewing(null);
+    setRoute('home');
     flash(mode === 'edit' ? 'Changes saved' : 'Meal logged. Nice one!');
     loadDashboard(false);
+    bumpHistory();
   }
 
   async function handleDelete() {
     if (!selected) return;
     await deleteMeal(selected.id);
     setDeleteDialog(current => ({ ...current, open: false }));
-    setRoute('dash');
+    setRoute('home');
     flash('Meal deleted');
     loadDashboard(false);
+    bumpHistory();
   }
 
   const openAdd = (type: MealType = typeForHour()) => setSheet({ open: true, mode: 'add', type, key: Date.now() });
 
+  // Bottom-nav press: switch tabs, and a second press on the active tab pops its sub-screen.
+  const openTab = (tab: Tab) => {
+    if (activeTab === tab) {
+      if (tab === 'progress') setProgressPop(current => current + 1);
+      if (tab === 'tips') setTipsPop(current => current + 1);
+      return;
+    }
+    if (tab === 'home') setViewing(null);
+    setRoute(tab);
+  };
+
   return (
     <View style={[ui.flex, { backgroundColor: route === 'boot' ? colors.lime : colors.bg }]}>
       {route === 'boot' ? <BootScreen state={boot} onRetry={start} /> : null}
-      {route === 'goal' ? (
-        <GoalSetup
-          initialType={editingGoal ? dashboard?.goal?.type : undefined}
-          initialTarget={editingGoal ? dashboard?.goal?.dailyCalorieTarget : undefined}
-          onCancel={editingGoal ? () => { setEditingGoal(false); setRoute('dash'); } : undefined}
-          onSave={handleGoalSaved}
-        />
-      ) : null}
-      {route === 'dash' ? (
-        <DashboardScreen
-          dashboard={dashboard}
-          state={dash}
-          target={dailyTarget}
-          onAdd={openAdd}
-          onEditGoal={() => { setEditingGoal(true); setRoute('goal'); }}
-          onOpenMeal={meal => {
-            setSelectedId(meal.id);
-            setRoute('detail');
-          }}
-          onRefresh={() => loadDashboard(false)}
-          onRetry={() => loadDashboard(true)}
-        />
+      {route === 'goal' ? <GoalSetup initial={editingGoal ?? undefined} editing={!!editingGoal} onCancel={() => { setEditingGoal(null); setRoute('home'); }} onSave={handleGoalSaved} /> : null}
+      {activeTab ? (
+        <>
+          <View style={[ui.flex, activeTab === 'home' ? null : screen.hidden]}>
+            <DashboardScreen
+              dashboard={viewing ?? dashboard}
+              state={dash}
+              target={dailyTarget}
+              mealTypes={mealTypes}
+              viewing={viewing}
+              onAdd={openAdd}
+              onOpenMeal={meal => {
+                setSelectedId(meal.id);
+                setRoute('detail');
+              }}
+              onBackToToday={() => setViewing(null)}
+              onRefresh={() => loadDashboard(false)}
+              onRetry={() => loadDashboard(true)}
+              onEditGoal={() => {
+                const goal = dashboard?.goal;
+                setEditingGoal(goal ? { dailyCalorieTarget: goal.dailyCalorieTarget, type: goal.type } : null);
+                setRoute('goal');
+              }}
+            />
+          </View>
+          <View style={[ui.flex, activeTab === 'progress' ? null : screen.hidden]}>
+            <ProgressScreen
+              target={dailyTarget}
+              hasGoal={!!dashboard?.goal}
+              mealTypes={mealTypes}
+              version={historyVersion}
+              popSignal={progressPop}
+              onLogMeal={() => openAdd()}
+              onSetGoal={() => {
+                const goal = dashboard?.goal;
+                setEditingGoal(goal ? { dailyCalorieTarget: goal.dailyCalorieTarget, type: goal.type } : null);
+                setRoute('goal');
+              }}
+              onViewDay={day => {
+                if (day.date === dateKey()) setViewing(null);
+                else setViewing(day);
+                setRoute('home');
+              }}
+            />
+          </View>
+          <View style={[ui.flex, activeTab === 'rewards' ? null : screen.hidden]}>
+            <RewardsScreen onHome={() => openTab('home')} />
+          </View>
+          <View style={[ui.flex, activeTab === 'tips' ? null : screen.hidden]}>
+            <TipsScreen popSignal={tipsPop} />
+          </View>
+          <BottomNav activeTab={activeTab} onNavigate={openTab} onAdd={() => openAdd()} />
+        </>
       ) : null}
       {route === 'detail' && selected ? (
         <MealDetail
           meal={selected}
-          type={mealTypeOf(selected)}
+          type={mealTypeOf(selected, mealTypes)}
           target={dailyTarget}
-          onBack={() => setRoute('dash')}
-          onEdit={() => setSheet({ open: true, mode: 'edit', type: mealTypeOf(selected), key: Date.now() })}
+          editable={selectedEditable}
+          onBack={() => setRoute(viewing ? 'home' : 'home')}
+          onEdit={() => setSheet({ open: true, mode: 'edit', type: mealTypeOf(selected, mealTypes), key: Date.now() })}
           onDelete={() => setDeleteDialog({ open: true, key: Date.now() })}
         />
       ) : null}
@@ -233,10 +306,10 @@ function BootScreen({ state, onRetry }: { state: BootState; onRetry: () => void 
 
 const goalIcons: Record<GoalType, IconName> = { lose: 'trendDown', maintain: 'equals', gain: 'trendUp' };
 
-function GoalSetup({ initialType, initialTarget, onCancel, onSave }: { initialType?: GoalType; initialTarget?: number; onCancel?: () => void; onSave: (goal: { dailyCalorieTarget: number; type: GoalType }) => Promise<void> }) {
+function GoalSetup({ initial, editing, onCancel, onSave }: { initial?: { dailyCalorieTarget: number; type: GoalType }; editing: boolean; onCancel?: () => void; onSave: (goal: { dailyCalorieTarget: number; type: GoalType }) => Promise<void> }) {
   const insets = useSafeAreaInsets();
-  const [type, setType] = useState<GoalType>(initialType ?? 'maintain');
-  const [targetText, setTargetText] = useState(String(initialTarget ?? 2000));
+  const [type, setType] = useState<GoalType>(initial?.type ?? 'maintain');
+  const [targetText, setTargetText] = useState(String(initial?.dailyCalorieTarget ?? 2000));
   const [error, setError] = useState('');
   const [status, setStatus] = useState<'idle' | 'saving' | 'fail'>('idle');
 
@@ -263,13 +336,13 @@ function GoalSetup({ initialType, initialTarget, onCancel, onSave }: { initialTy
 
   return (
     <ScrollView style={ui.flex} contentContainerStyle={[screen.goal, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 24 }]} keyboardShouldPersistTaps="handled">
-      <View style={screen.setupHeader}>
+      <View style={screen.row8}>
+        {editing && onCancel ? <RoundIconButton name="arrowLeft" label="Back" iconSize={20} stroke={2.6} onPress={onCancel} /> : null}
         <Greeting />
-        {onCancel ? <RoundIconButton name="arrowLeft" label="Cancel" bg={colors.chip} size={40} iconSize={18} stroke={2.6} onPress={onCancel} /> : null}
       </View>
       <View style={screen.gap8}>
-        <Text style={screen.goalTitle}>{onCancel ? 'Update your goal' : 'What are you aiming for?'}</Text>
-        <Text style={screen.body}>{onCancel ? 'Adjust your daily target whenever your needs change.' : 'Pick a goal and a daily calorie target to get started.'}</Text>
+        <Text style={screen.goalTitle}>{editing ? 'Update your goal' : 'What are you aiming for?'}</Text>
+        <Text style={screen.body}>{editing ? 'Keep your daily target aligned with what you need right now.' : 'Pick a goal and a daily calorie target to get started.'}</Text>
       </View>
       <View style={screen.gap10}>
         {GOALS.map(goal => {
@@ -307,7 +380,7 @@ function GoalSetup({ initialType, initialTarget, onCancel, onSave }: { initialTy
       </Card>
       <View style={ui.flex} />
       {status === 'fail' ? <Banner icon message="We couldn't save your goal. Check your connection and try again." /> : null}
-      <PillButton title={status === 'fail' ? 'Retry' : onCancel ? 'Save goal' : 'Set my goal'} busy={status === 'saving'} busyLabel="Saving your goal…" glow onPress={submit} />
+      <PillButton title={status === 'fail' ? 'Retry' : editing ? 'Save changes' : 'Set my goal'} busy={status === 'saving'} busyLabel="Saving your goal…" glow onPress={submit} />
     </ScrollView>
   );
 }
@@ -323,48 +396,46 @@ function Greeting({ children }: { children?: React.ReactNode }) {
 
 // ---------- Page 2 · Today dashboard ----------
 
-function DashboardScreen({ dashboard, state, target, onAdd, onEditGoal, onOpenMeal, onRefresh, onRetry }: { dashboard: Dashboard | null; state: DashState; target: number; onAdd: (type?: MealType) => void; onEditGoal: () => void; onOpenMeal: (meal: Meal) => void; onRefresh: () => void; onRetry: () => void }) {
+function DashboardScreen({ dashboard, state, target, mealTypes, viewing, onAdd, onOpenMeal, onBackToToday, onRefresh, onRetry, onEditGoal }: { dashboard: Dashboard | null; state: DashState; target: number; mealTypes: MealTypes; viewing: Dashboard | null; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void; onBackToToday: () => void; onRefresh: () => void; onRetry: () => void; onEditGoal: () => void }) {
   const insets = useSafeAreaInsets();
-  const now = new Date();
-  const busy = state === 'loading' || state === 'refreshing';
-  const hasContent = !!dashboard && (state === 'ready' || state === 'refreshing' || state === 'fail');
+  const now = viewing ? new Date(`${viewing.date}T12:00:00`) : new Date();
+  const busy = !viewing && (state === 'loading' || state === 'refreshing');
+  const hasContent = !!dashboard && (!!viewing || state === 'ready' || state === 'refreshing' || state === 'fail');
   const dateLabel = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <View style={ui.flex}>
-      <ScrollView
-        contentContainerStyle={[screen.dash, { paddingTop: insets.top + 8 }]}
-        refreshControl={hasContent ? <RefreshControl refreshing={false} onRefresh={onRefresh} /> : undefined}>
-        <Greeting>
-          <View style={screen.grow}>
-            <Text style={screen.small}>Hello there!</Text>
-            <Text style={screen.headline}>{dateLabel}</Text>
-          </View>
-          <View style={screen.row6}>
-            <RoundIconButton name="pencil" label="Edit goal" bg={colors.chip} onPress={onEditGoal} />
+    <ScrollView contentContainerStyle={[screen.dash, { paddingTop: insets.top + 8 }]} refreshControl={!viewing && hasContent ? <RefreshControl refreshing={false} onRefresh={onRefresh} /> : undefined}>
+      <View style={screen.greeting}>
+        {viewing ? <RoundIconButton name="arrowLeft" label="Back" iconSize={20} stroke={2.6} onPress={onBackToToday} /> : <IconTile name="user" bg={colors.pale} fg={colors.greenDark} size={44} radius={22} />}
+        <View style={screen.grow}>
+          <Text style={screen.small}>{viewing ? 'Past day' : 'Hello there!'}</Text>
+          <Text style={screen.headline}>{dateLabel}</Text>
+        </View>
+        {viewing ? null : (
+          <View style={screen.row8}>
+            <RoundIconButton name="pencil" label="Edit goal" size={42} iconSize={18} stroke={2.4} onPress={onEditGoal} />
             <RoundIconButton name="refresh" label="Refresh" busy={busy} onPress={onRefresh} />
           </View>
-        </Greeting>
+        )}
+      </View>
 
-        {state === 'loading' ? <DashboardSkeleton /> : null}
-        {state === 'error' || (!dashboard && state === 'fail') ? (
-          <ErrorCard title="Today didn't load" body="Your meals are safe. We just couldn't fetch them. Give it another go." onRetry={onRetry} style={screen.dashError} />
-        ) : null}
-        {hasContent && dashboard ? (
-          <>
-            {state === 'refreshing' ? (
-              <View style={screen.refreshChip}>
-                <Spinner color={colors.greenDark} />
-                <Text style={screen.refreshText}>Refreshing…</Text>
-              </View>
-            ) : null}
-            {state === 'fail' ? <Banner message="Couldn't refresh. Showing your last update." onRetry={onRefresh} /> : null}
-            <DashboardContent dashboard={dashboard} target={target} now={now} onAdd={onAdd} onOpenMeal={onOpenMeal} />
-          </>
-        ) : null}
-      </ScrollView>
-      <BottomNav onAdd={() => onAdd()} />
-    </View>
+      {!viewing && state === 'loading' ? <DashboardSkeleton /> : null}
+      {!viewing && (state === 'error' || (!dashboard && state === 'fail')) ? (
+        <ErrorCard title="Today didn't load" body="Your meals are safe. We just couldn't fetch them. Give it another go." onRetry={onRetry} style={screen.dashError} />
+      ) : null}
+      {hasContent && dashboard ? (
+        <>
+          {!viewing && state === 'refreshing' ? (
+            <View style={screen.refreshChip}>
+              <Spinner color={colors.greenDark} />
+              <Text style={screen.refreshText}>Refreshing…</Text>
+            </View>
+          ) : null}
+          {!viewing && state === 'fail' ? <Banner message="Couldn't refresh. Showing your last update." onRetry={onRefresh} /> : null}
+          <DashboardContent dashboard={dashboard} target={target} mealTypes={mealTypes} now={now} viewing={!!viewing} onAdd={onAdd} onOpenMeal={onOpenMeal} />
+        </>
+      ) : null}
+    </ScrollView>
   );
 }
 
@@ -383,14 +454,19 @@ function DashboardSkeleton() {
   );
 }
 
-function DashboardContent({ dashboard, target, now, onAdd, onOpenMeal }: { dashboard: Dashboard; target: number; now: Date; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void }) {
+function DashboardContent({ dashboard, target, mealTypes, now, viewing, onAdd, onOpenMeal }: { dashboard: Dashboard; target: number; mealTypes: MealTypes; now: Date; viewing: boolean; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void }) {
   const meals = [...dashboard.meals].sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
   const consumed = dashboard.totalCalories;
   const remaining = target - consumed;
   const sum = (key: 'proteinGrams' | 'carbsGrams' | 'fatGrams') => meals.reduce((total, meal) => total + (meal[key] ?? 0), 0);
   const macros = macroTargets(target);
-  const kicker = remaining < 0 ? 'A little over today' : consumed === 0 ? 'Fresh start today' : "Today's intake";
-  const countLabel = !meals.length ? 'No meals yet' : meals.length === 1 ? '1 meal today' : `${meals.length} meals today`;
+  const kicker = viewing
+    ? remaining < 0 ? 'Over target that day' : consumed === 0 ? 'Nothing logged that day' : 'Logged that day'
+    : remaining < 0 ? 'A little over today' : consumed === 0 ? 'Fresh start today' : "Today's intake";
+  const countLabel = viewing
+    ? meals.length === 1 ? '1 meal' : `${meals.length} meals`
+    : !meals.length ? 'No meals yet' : meals.length === 1 ? '1 meal today' : `${meals.length} meals today`;
+  const emptyLabel = remaining > 0 ? `Nothing yet · ${formatNumber(remaining)} kcal to play with` : 'Nothing yet';
 
   return (
     <>
@@ -419,58 +495,32 @@ function DashboardContent({ dashboard, target, now, onAdd, onOpenMeal }: { dashb
 
       <WeekStrip date={dashboard.date} now={now} countLabel={countLabel} />
 
-      {!meals.length ? (
-        <Card style={screen.emptyCard}>
+      {!meals.length && !viewing ? (
+        <Card style={screen.emptyCardLocal}>
           <IconTile name="utensils" bg={colors.carbsBg} fg="#c27a12" />
-          <View style={screen.gap4}>
-            <Text style={screen.emptyTitle}>No meals logged yet</Text>
-            <Text style={screen.body14}>Your full {formatNumber(target)} kcal is still on the table. Log your first meal and we'll keep count.</Text>
+          <View style={ui.gap4}>
+            <Text style={ui.emptyTitle}>No meals logged yet</Text>
+            <Text style={ui.body14}>Your full {formatNumber(target)} kcal is still on the table. Log your first meal and we'll keep count.</Text>
           </View>
           <PillButton title="Log a meal" icon="plus" height={50} onPress={() => onAdd()} />
         </Card>
+      ) : !meals.length && viewing ? (
+        <Card style={ui.gap4}>
+          <Text style={ui.emptyTitle}>Nothing logged this day</Text>
+          <Text style={ui.body14}>Days without meals are not counted in your progress averages.</Text>
+        </Card>
       ) : (
-        MEAL_TYPES.map(({ id, label }) => {
-          const items = meals.filter(meal => mealTypeOf(meal) === id);
-          const kcal = items.reduce((total, meal) => total + (meal.caloriesKcal ?? 0), 0);
-          if (!items.length) {
-            return (
-              <Pressable key={id} onPress={() => onAdd(id)} style={({ pressed }) => [screen.emptyGroup, pressed && { backgroundColor: colors.white }]}>
-                <MealTypeTile type={id} />
-                <View style={screen.grow}>
-                  <Text style={screen.optionTitle}>{label}</Text>
-                  <Text style={screen.small}>{remaining > 0 ? `Nothing yet · ${formatNumber(remaining)} kcal to play with` : 'Nothing yet'}</Text>
-                </View>
-                <IconTile name="plus" bg={colors.limeBright} fg={colors.ink} size={36} radius={18} iconSize={18} stroke={2.6} />
-              </Pressable>
-            );
-          }
-          return (
-            <Card key={id} style={screen.gap8}>
-              <View style={screen.rowCenter12}>
-                <MealTypeTile type={id} />
-                <View style={screen.grow}>
-                  <Text style={screen.optionTitle}>{label}</Text>
-                  <Text style={screen.small}>
-                    {formatNumber(kcal)} kcal · {items.length} {items.length === 1 ? 'item' : 'items'}
-                  </Text>
-                </View>
-                <RoundIconButton name="plus" label={`Add to ${label}`} bg={colors.bg} size={36} iconSize={18} stroke={2.6} onPress={() => onAdd(id)} />
-              </View>
-              <View style={screen.mealList}>
-                {items.map(meal => (
-                  <Pressable key={meal.id} onPress={() => onOpenMeal(meal)} style={({ pressed }) => [screen.mealRow, pressed && { backgroundColor: colors.bg }]}>
-                    <View style={screen.grow}>
-                      <Text style={screen.mealName}>{meal.name}</Text>
-                      <Text style={screen.mealTime}>{formatTime(meal.loggedAt)}</Text>
-                    </View>
-                    <Text style={screen.mealCal}>{formatNumber(meal.caloriesKcal ?? 0)} kcal</Text>
-                    <Icon name="chevronRight" size={16} color={colors.faint} stroke={2.6} />
-                  </Pressable>
-                ))}
-              </View>
-            </Card>
-          );
-        })
+        MEAL_TYPES.map(({ id, label }) => (
+          <MealGroupCard
+            key={id}
+            type={id}
+            label={label}
+            meals={meals.filter(meal => mealTypeOf(meal, mealTypes) === id)}
+            onOpenMeal={onOpenMeal}
+            onAdd={viewing ? undefined : () => onAdd(id)}
+            emptyLabel={emptyLabel}
+          />
+        ))
       )}
     </>
   );
@@ -503,33 +553,43 @@ function WeekStrip({ date, now, countLabel }: { date: string; now: Date; countLa
   );
 }
 
-function BottomNav({ onAdd }: { onAdd: () => void }) {
+const NAV_TABS: { tab: Tab; icon: IconName; label: string }[] = [
+  { tab: 'home', icon: 'home', label: 'Home' },
+  { tab: 'progress', icon: 'chart', label: 'Progress' },
+  { tab: 'rewards', icon: 'gift', label: 'Rewards' },
+  { tab: 'tips', icon: 'lightbulb', label: 'Tips' },
+];
+
+function BottomNav({ activeTab, onNavigate, onAdd }: { activeTab: Tab; onNavigate: (tab: Tab) => void; onAdd: () => void }) {
   const insets = useSafeAreaInsets();
-  const item = (icon: IconName, label: string, active = false) => (
-    <View style={screen.navItem} accessibilityState={{ disabled: !active }}>
-      <Icon name={icon} size={22} color={active ? colors.ink : colors.disabled} />
-      <Text style={[screen.navLabel, active && screen.navActive]}>{label}</Text>
-      {!active ? <Text style={screen.soon}>Soon</Text> : null}
-    </View>
-  );
   return (
     <View style={[screen.nav, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-      {item('home', 'Home', true)}
-      {item('chart', 'Progress')}
+      <NavItem {...NAV_TABS[0]} active={activeTab === 'home'} onPress={onNavigate} />
+      <NavItem {...NAV_TABS[1]} active={activeTab === 'progress'} onPress={onNavigate} />
       <View style={screen.navItem}>
-        <Pressable accessibilityLabel="Log a meal" accessibilityRole="button" onPress={onAdd} style={({ pressed }) => [screen.fab, pressed && { transform: [{ scale: 0.95 }] }]}>
+        <Pressable accessibilityLabel="Log a meal" accessibilityRole="button" onPress={onAdd} style={({ pressed }) => [screen.fab, pressed && screen.fabPressed]}>
           <Icon name="plus" size={26} stroke={2.8} />
         </Pressable>
       </View>
-      {item('gift', 'Rewards')}
-      {item('lightbulb', 'Tips')}
+      <NavItem {...NAV_TABS[2]} active={activeTab === 'rewards'} onPress={onNavigate} />
+      <NavItem {...NAV_TABS[3]} active={activeTab === 'tips'} onPress={onNavigate} />
     </View>
+  );
+}
+
+function NavItem({ tab, icon, label, active, onPress }: { tab: Tab; icon: IconName; label: string; active: boolean; onPress: (tab: Tab) => void }) {
+  return (
+    <Pressable accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => onPress(tab)} style={screen.navItem}>
+      <Icon name={icon} size={22} color={active ? colors.ink : '#8a8f82'} />
+      <Text style={[screen.navLabel, active && screen.navActive]}>{label}</Text>
+      <View style={[screen.navDot, active && screen.navDotOn]} />
+    </Pressable>
   );
 }
 
 // ---------- Page 4 · Meal detail ----------
 
-function MealDetail({ meal, type, target, onBack, onEdit, onDelete }: { meal: Meal; type: MealType; target: number; onBack: () => void; onEdit: () => void; onDelete: () => void }) {
+function MealDetail({ meal, type, target, editable, onBack, onEdit, onDelete }: { meal: Meal; type: MealType; target: number; editable: boolean; onBack: () => void; onEdit: () => void; onDelete: () => void }) {
   const insets = useSafeAreaInsets();
   const cal = meal.caloriesKcal ?? 0;
   const time = formatTime(meal.loggedAt);
@@ -582,10 +642,12 @@ function MealDetail({ meal, type, target, onBack, onEdit, onDelete }: { meal: Me
         </Text>
       </View>
       <View style={ui.flex} />
-      <View style={screen.gap10}>
-        <PillButton title="Edit meal" variant="dark" icon="pencil" onPress={onEdit} />
-        <PillButton title="Delete meal" variant="light" icon="trash" onPress={onDelete} />
-      </View>
+      {editable ? (
+        <View style={screen.gap10}>
+          <PillButton title="Edit meal" variant="dark" icon="pencil" onPress={onEdit} />
+          <PillButton title="Delete meal" variant="light" icon="trash" onPress={onDelete} />
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -599,7 +661,7 @@ const toText = (value: number | null) => (value === null ? '' : String(value));
 
 function validate(form: MealForm): FormErrors {
   const errors: FormErrors = {};
-  if (!form.name.trim()) errors.name = 'Enter a meal name or choose a food.';
+  if (!form.name.trim()) errors.name = 'Choose a food from the list.';
   if (!form.cal.trim()) errors.cal = 'Add calories, even a rough guess.';
   else if (!isWholeNumber(form.cal)) errors.cal = 'Use a whole number, 0 or more.';
   (['p', 'c', 'f'] as const).forEach(key => {
@@ -608,7 +670,7 @@ function validate(form: MealForm): FormErrors {
   return errors;
 }
 
-function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { visible: boolean; mode: 'add' | 'edit'; initialType: MealType; meal: Meal | null; onClose: () => void; onSaved: (mode: 'add' | 'edit') => void }) {
+function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { visible: boolean; mode: 'add' | 'edit'; initialType: MealType; meal: Meal | null; onClose: () => void; onSaved: (types: MealTypes, mode: 'add' | 'edit') => void }) {
   const insets = useSafeAreaInsets();
   const [form, setForm] = useState<MealForm>(() =>
     meal
@@ -642,7 +704,7 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
     try {
       if (mode === 'edit' && meal) await updateMeal(meal.id, input);
       else await createMeal(input);
-      onSaved(mode);
+      onSaved({}, mode);
     } catch {
       setStatus('fail');
     }
@@ -670,7 +732,7 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
       <ScrollView style={screen.sheetBody} contentContainerStyle={screen.sheetContent} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
         <View style={screen.gap6}>
           <Text style={screen.label14}>Food</Text>
-          <FoodPicker value={form.name} error={!!errors.name} onChange={name => update({ name })} onPick={food => update({ name: food.name, cal: String(food.cal), p: String(food.p), c: String(food.c), f: String(food.f) })} />
+          <FoodPicker value={form.name} error={!!errors.name} onPick={food => update({ name: food.name, cal: String(food.cal), p: String(food.p), c: String(food.c), f: String(food.f) })} />
           <FieldError message={errors.name} />
         </View>
         <View style={screen.gap6}>
@@ -728,7 +790,7 @@ function FieldLabel({ title, hint }: { title: string; hint: string }) {
   );
 }
 
-function FoodPicker({ value, error, onChange, onPick }: { value: string; error: boolean; onChange: (value: string) => void; onPick: (food: (typeof FOODS)[number]) => void }) {
+function FoodPicker({ value, error, onPick }: { value: string; error: boolean; onPick: (food: (typeof FOODS)[number]) => void }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
@@ -740,9 +802,9 @@ function FoodPicker({ value, error, onChange, onPick }: { value: string; error: 
         <TextInput
           accessibilityLabel="Food"
           value={open ? query : value}
-          onChangeText={text => { setQuery(text); onChange(text); setOpen(true); }}
-          onFocus={() => { setQuery(value); setOpen(true); }}
-          placeholder={value || 'Search or type a meal'}
+          onChangeText={text => { setQuery(text); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder={value || 'Search or choose a food'}
           placeholderTextColor={value ? colors.ink : colors.faint}
           style={screen.foodInput}
         />
@@ -754,7 +816,6 @@ function FoodPicker({ value, error, onChange, onPick }: { value: string; error: 
       </InputShell>
       {open ? (
         <View style={screen.picker}>
-          <Text style={screen.pickerHint}>Choose a food or type your own meal name.</Text>
           <ScrollView style={screen.pickerList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {foods.map(food => {
               const on = food.name === value;
@@ -823,8 +884,10 @@ const screen = StyleSheet.create({
   gap10: { gap: 10 },
   gap14: { gap: 14 },
   fullWidth: { alignSelf: 'stretch' },
-  setupHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   spacer44: { width: 44 },
+  hidden: { display: 'none' },
+  fabPressed: { transform: [{ scale: 0.95 }] },
+  emptyCardLocal: { backgroundColor: colors.white, borderRadius: 24, gap: 14, paddingHorizontal: 20, paddingVertical: 24 },
   bold: { color: colors.ink, fontWeight: '700' },
   body: { color: colors.muted, fontSize: 15, lineHeight: 22 },
   body14: { color: colors.muted, fontSize: 14, lineHeight: 20 },
@@ -896,7 +959,8 @@ const screen = StyleSheet.create({
   navItem: { alignItems: 'center', flex: 1, gap: 4 },
   navLabel: { color: colors.disabled, fontSize: 11 },
   navActive: { color: colors.ink, fontWeight: '700' },
-  soon: { backgroundColor: colors.chip, borderRadius: 99, color: colors.muted2, fontSize: 9, fontWeight: '700', overflow: 'hidden', paddingHorizontal: 5, paddingVertical: 1, position: 'absolute', right: 4, top: -8 },
+  navDot: { backgroundColor: 'transparent', borderRadius: 3, height: 5, width: 5 },
+  navDotOn: { backgroundColor: colors.green },
   fab: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 29, boxShadow: '0 0 0 6px #fff, 0 8px 18px rgba(127,191,42,.45)', height: 58, justifyContent: 'center', marginTop: -26, width: 58 },
 
   detail: { flexGrow: 1, gap: 14, paddingHorizontal: 18 },
@@ -925,7 +989,6 @@ const screen = StyleSheet.create({
   foodInput: { color: colors.ink, flex: 1, fontSize: 16, fontWeight: '600', minWidth: 0, padding: 0 },
   chevron: { alignItems: 'center', height: 28, justifyContent: 'center', width: 28 },
   picker: { backgroundColor: colors.white, borderRadius: 18, boxShadow: '0 0 0 1.5px #e6eadc, 0 8px 18px rgba(28,31,26,.08)', marginTop: 2, padding: 6 },
-  pickerHint: { color: colors.muted2, fontSize: 12, paddingHorizontal: 8, paddingTop: 6 },
   pickerList: { maxHeight: 232 },
   foodRow: { alignItems: 'center', borderRadius: 12, flexDirection: 'row', gap: 10, paddingHorizontal: 10, paddingVertical: 9 },
   foodCal: { color: '#3f443a', fontSize: 13, fontWeight: '600' },

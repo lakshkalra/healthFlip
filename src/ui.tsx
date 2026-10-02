@@ -17,7 +17,8 @@ import {
 } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
-import type { MealType } from './meals';
+import { formatNumber, formatTime, mealCalories, type MealType } from './meals';
+import type { Meal } from './types';
 
 // ---------- Theme ----------
 
@@ -68,28 +69,39 @@ export const mealTypeStyle: Record<MealType, { bg: string; fg: string; icon: Ico
 
 const circle = (cx: number, cy: number, r: number) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${r * 2} 0a${r} ${r} 0 1 0 ${-r * 2} 0`;
 
+const CALENDAR = 'M8 2v4M16 2v4M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z';
+
 const ICONS = {
   alert: [circle(12, 12, 10), 'M12 8v4', 'M12 16h.01'],
   apple: ['M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z', 'M10 2c1 .5 2 2 2 5'],
   arrowLeft: ['m12 19-7-7 7-7', 'M19 12H5'],
+  arrowRight: ['M5 12h14M12 5l7 7-7 7'],
+  calendarCheck: [CALENDAR, 'M3 10h18', 'm9 16 2 2 4-4'],
+  calendarX: [CALENDAR, 'M3 10h18', 'm14 14-4 4M10 14l4 4'],
   chart: ['M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3'],
   check: ['M20 6 9 17l-5-5'],
   chevronDown: ['m6 9 6 6 6-6'],
+  chevronLeft: ['m15 18-6-6 6-6'],
   chevronRight: ['m9 18 6-6-6-6'],
   clock: [circle(12, 12, 10), 'M12 6v6l4 2'],
   close: ['M18 6 6 18M6 6l12 12'],
+  droplet: ['M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z'],
   equals: ['M5 9h14', 'M5 15h14'],
   flame: ['M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'],
   gift: ['M4 8h16a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z', 'M12 8v13M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7M7.5 8a2.5 2.5 0 0 1 0-5C9 3 11 5 12 8c1-3 3-5 4.5-5a2.5 2.5 0 0 1 0 5'],
+  info: [circle(12, 12, 10), 'M12 16v-4M12 8h.01'],
   home: ['M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8', 'M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
   leaf: ['M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z', 'M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12'],
   lightbulb: ['M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4'],
   minus: ['M5 12h14'],
+  nutrition: ['M12 6.528V3a1 1 0 0 1 1-1M18.237 21A15 15 0 0 0 22 11a6 6 0 0 0-10-4.472A6 6 0 0 0 2 11a15.1 15.1 0 0 0 3.763 10 3 3 0 0 0 3.648.648 5.5 5.5 0 0 1 5.178 0A3 3 0 0 0 18.237 21'],
   moon: ['M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z'],
   pencil: ['M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z'],
   plus: ['M5 12h14M12 5v14'],
   refresh: ['M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8', 'M21 3v5h-5', 'M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16', 'M8 16H3v5'],
+  repeat: ['m17 2 4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3'],
   search: [circle(11, 11, 8), 'm21 21-4.3-4.3'],
+  target: [circle(12, 12, 10), circle(12, 12, 6), circle(12, 12, 2)],
   sun: [circle(12, 12, 4), 'M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41'],
   trash: ['M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2'],
   trendDown: ['M22 17 13.5 8.5 8.5 13.5 2 7', 'M16 17h6v-6'],
@@ -145,7 +157,7 @@ const buttonVariants = {
   danger: { bg: colors.danger, pressed: '#a93a27', fg: colors.white },
 };
 
-export function PillButton({ title, onPress, variant = 'primary', icon, busy = false, busyLabel, height = 56, glow = false, style }: { title: string; onPress: () => void; variant?: keyof typeof buttonVariants; icon?: IconName; busy?: boolean; busyLabel?: string; height?: number; glow?: boolean; style?: StyleProp<ViewStyle> }) {
+export function PillButton({ title, onPress, variant = 'primary', icon, trailingIcon, busy = false, busyLabel, height = 56, glow = false, style }: { title: string; onPress: () => void; variant?: keyof typeof buttonVariants; icon?: IconName; trailingIcon?: IconName; busy?: boolean; busyLabel?: string; height?: number; glow?: boolean; style?: StyleProp<ViewStyle> }) {
   const v = buttonVariants[variant];
   return (
     <Pressable
@@ -156,6 +168,7 @@ export function PillButton({ title, onPress, variant = 'primary', icon, busy = f
       style={({ pressed }) => [styles.pill, { height, backgroundColor: pressed ? v.pressed : v.bg }, glow && !busy && styles.glow, busy && styles.busy, style]}>
       {busy ? <Spinner color={v.fg} /> : icon ? <Icon name={icon} size={18} color={v.fg} stroke={2.6} /> : null}
       <Text style={[styles.pillText, height < 52 && styles.pillTextSmall, { color: v.fg }]}>{busy && busyLabel ? busyLabel : title}</Text>
+      {trailingIcon && !busy ? <Icon name={trailingIcon} size={18} color={v.fg} stroke={2.6} /> : null}
     </Pressable>
   );
 }
@@ -288,6 +301,102 @@ export function Overlay({ visible, onClose, variant = 'sheet', children }: { vis
   );
 }
 
+
+// ---------- Shared screen pieces ----------
+
+/** Back arrow, centred title and a spacer, used by every sub-screen. */
+export function BackHeader({ title, onBack }: { title: string; onBack: () => void }) {
+  return (
+    <View style={styles.backHeader}>
+      <RoundIconButton name="arrowLeft" label="Back" iconSize={20} stroke={2.6} onPress={onBack} />
+      <Text style={styles.headline}>{title}</Text>
+      <View style={styles.spacer44} />
+    </View>
+  );
+}
+
+/** White card with a round icon, title, body and an optional action (empty / blocked states). */
+export function EmptyCard({ icon, tone = 'lime', title, body, centered = false, children }: { icon: IconName; tone?: 'lime' | 'muted'; title: string; body: string; centered?: boolean; children?: ReactNode }) {
+  const lime = tone === 'lime';
+  return (
+    <View style={[styles.emptyCard, centered && styles.centerText]}>
+      <IconTile name={icon} bg={lime ? colors.pale : colors.chip} fg={lime ? colors.greenText : colors.muted} size={48} radius={24} stroke={2.6} />
+      <View style={[styles.gap4, centered && styles.centerText]}>
+        <Text style={[styles.emptyTitle, centered && styles.textCenter]}>{title}</Text>
+        <Text style={[styles.body14, centered && styles.textCenter]}>{body}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+/** Small "i" note: a lime callout or a muted footnote. */
+export function InfoNote({ text, tone = 'plain' }: { text: string; tone?: 'lime' | 'plain' }) {
+  const lime = tone === 'lime';
+  return (
+    <View style={lime ? styles.noteLime : styles.notePlain}>
+      <Icon name="info" size={lime ? 16 : 14} color={lime ? colors.greenDark : colors.muted2} />
+      <Text style={[styles.noteText, lime && styles.noteTextLime]}>{text}</Text>
+    </View>
+  );
+}
+
+/** Visual on/off switch; the parent row handles the press. */
+export function Toggle({ on }: { on: boolean }) {
+  return (
+    <View style={[styles.toggle, on && styles.toggleOn]}>
+      <View style={[styles.toggleKnob, on && styles.toggleKnobOn]} />
+    </View>
+  );
+}
+
+/** Meals of one type. Pass onOpenMeal / onAdd for the interactive dashboard, omit them for read-only history. */
+export function MealGroupCard({ type, label, meals, onOpenMeal, onAdd, emptyLabel }: { type: MealType; label: string; meals: Meal[]; onOpenMeal?: (meal: Meal) => void; onAdd?: () => void; emptyLabel?: string }) {
+  if (!meals.length) {
+    return onAdd ? (
+      <Pressable onPress={onAdd} style={({ pressed }) => [styles.emptyGroup, pressed && styles.whiteBg]}>
+        <MealTypeTile type={type} />
+        <View style={styles.grow}>
+          <Text style={styles.groupTitle}>{label}</Text>
+          <Text style={styles.small}>{emptyLabel}</Text>
+        </View>
+        <IconTile name="plus" bg={colors.limeBright} fg={colors.ink} size={36} radius={18} iconSize={18} stroke={2.6} />
+      </Pressable>
+    ) : (
+      <View style={styles.emptyGroup}>
+        <Text style={[styles.groupTitle, styles.grow, { color: colors.muted }]}>{label}</Text>
+        <Text style={styles.mealTime}>Not logged</Text>
+      </View>
+    );
+  }
+  return (
+    <Card style={onOpenMeal ? styles.gap8 : styles.gap6}>
+      <View style={styles.rowCenter12}>
+        <MealTypeTile type={type} />
+        <View style={styles.grow}>
+          <Text style={styles.groupTitle}>{label}</Text>
+          <Text style={styles.small}>
+            {formatNumber(mealCalories(meals))} kcal · {meals.length} {meals.length === 1 ? 'item' : 'items'}
+          </Text>
+        </View>
+        {onAdd ? <RoundIconButton name="plus" label={`Add to ${label}`} bg={colors.bg} size={36} iconSize={18} stroke={2.6} onPress={onAdd} /> : null}
+      </View>
+      <View style={styles.mealList}>
+        {meals.map(meal => (
+          <Pressable key={meal.id} disabled={!onOpenMeal} onPress={() => onOpenMeal?.(meal)} style={({ pressed }) => [styles.mealRow, !onOpenMeal && styles.mealRowStatic, pressed && { backgroundColor: colors.bg }]}>
+            <View style={styles.grow}>
+              <Text style={styles.mealName}>{meal.name}</Text>
+              <Text style={styles.mealTime}>{formatTime(meal.loggedAt)}</Text>
+            </View>
+            <Text style={styles.mealCal}>{formatNumber(meal.caloriesKcal ?? 0)} kcal</Text>
+            {onOpenMeal ? <Icon name="chevronRight" size={16} color={colors.faint} stroke={2.6} /> : null}
+          </Pressable>
+        ))}
+      </View>
+    </Card>
+  );
+}
+
 // ---------- Small layout helpers ----------
 
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
@@ -295,6 +404,41 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
 }
 
 export const styles = StyleSheet.create({
+  // shared screen pieces
+  grow: { flex: 1, gap: 2, minWidth: 0 },
+  gap4: { gap: 4 },
+  gap6: { gap: 6 },
+  gap8: { gap: 8 },
+  rowCenter12: { alignItems: 'center', flexDirection: 'row', gap: 12 },
+  whiteBg: { backgroundColor: colors.white },
+  centerText: { alignItems: 'center' },
+  textCenter: { textAlign: 'center' },
+  spacer44: { width: 44 },
+  small: { color: colors.muted, fontSize: 13 },
+  body14: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+  headline: { color: colors.ink, fontSize: 17, fontWeight: '700' },
+  screenTitle: { color: colors.ink, fontSize: 28, fontWeight: '800', letterSpacing: -0.6, lineHeight: 31 },
+  /** Scroll content for a tab screen that sits above the bottom nav. */
+  tabContent: { gap: 14, paddingBottom: 124, paddingHorizontal: 18 },
+  backHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  emptyCard: { backgroundColor: colors.white, borderRadius: 28, gap: 14, paddingHorizontal: 20, paddingVertical: 24 },
+  emptyTitle: { color: colors.ink, fontSize: 19, fontWeight: '800' },
+  noteLime: { backgroundColor: colors.pale, borderRadius: 18, flexDirection: 'row', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
+  notePlain: { flexDirection: 'row', gap: 8, paddingHorizontal: 6, paddingVertical: 4 },
+  noteText: { color: colors.muted2, flex: 1, fontSize: 12, lineHeight: 17 },
+  noteTextLime: { color: colors.greenDark, fontSize: 13, lineHeight: 18 },
+  toggle: { backgroundColor: colors.ring, borderRadius: 99, height: 26, padding: 3, width: 42 },
+  toggleOn: { backgroundColor: colors.green },
+  toggleKnob: { backgroundColor: colors.white, borderRadius: 10, boxShadow: '0 1px 3px rgba(0,0,0,.2)', height: 20, width: 20 },
+  toggleKnobOn: { transform: [{ translateX: 16 }] },
+  groupTitle: { color: colors.ink, fontSize: 16, fontWeight: '700' },
+  emptyGroup: { alignItems: 'center', borderColor: colors.dashed, borderRadius: 24, borderStyle: 'dashed', borderWidth: 1.5, flexDirection: 'row', gap: 12, padding: 16 },
+  mealList: { gap: 2, paddingLeft: 46 },
+  mealRow: { alignItems: 'center', borderRadius: 14, flexDirection: 'row', gap: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  mealRowStatic: { paddingVertical: 7 },
+  mealName: { color: colors.ink, fontSize: 14, fontWeight: '600' },
+  mealTime: { color: colors.muted2, fontSize: 12 },
+  mealCal: { color: '#3f443a', fontSize: 14, fontWeight: '600' },
   flex: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   selfStretch: { alignSelf: 'stretch', marginTop: 6 },

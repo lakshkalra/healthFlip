@@ -141,6 +141,12 @@ an internal data-scoping mechanism only.
 - [x] Implement and verify the Claude design handoff on the iOS simulator.
 - [x] Verify data survives a complete app restart.
 - [x] Verify the mobile app against the deployed API endpoint.
+- [x] Add the bottom navigation flows for Progress, Tips, and Rewards.
+- [x] Add Progress range selection, empty/loading/error states, trend/day-detail structure,
+  and navigation back to the dashboard.
+- [x] Add curated Tips categories and a practical tip-detail flow with wellness-only copy.
+- [x] Keep Rewards intentionally scoped to a polished coming-soon screen.
+- [x] Preserve goal editing while integrating the new navigation flows.
 
 ## Phase 2 implementation evidence
 
@@ -185,6 +191,12 @@ an internal data-scoping mechanism only.
   guest, saved the 2,000 kcal goal, and rendered the dashboard from the hosted API.
 - Android debug build: passed with the emulator active architecture optimization;
   the universal APK install was skipped because the AVD internal volume was nearly full.
+- Navigation design implementation verification (2026-10-02): Android emulator reached
+  the dashboard after a fresh guest bootstrap against the local API; Progress empty state,
+  Tips list/detail, Rewards coming-soon, and the restored goal-edit flow were manually
+  exercised. No fatal React Native runtime error was observed.
+- Navigation test coverage: mobile lint, TypeScript, and Jest passed; Jest reports 1 suite
+  and 6 tests passing. Android debug build/install completed successfully.
 
 The authoritative functional flow is documented in
 `docs/phase-2-flow-spec.md`. The Claude design handoff is sufficient for v0 flow
