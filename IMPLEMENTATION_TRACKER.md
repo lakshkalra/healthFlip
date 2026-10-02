@@ -9,7 +9,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 | --- | --- | --- |
 | Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, and Android emulator launch verified |
 | Phase 1 - Backend foundation | COMPLETE | Separate API repository, centralized table schemas, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
-| Phase 2 - Mobile core flows | IN PROGRESS | Flow design prototype prepared; implementation is waiting for UI review |
+| Phase 2 - Mobile core flows | IN PROGRESS | v0 flows implemented and manually verified against local PostgreSQL-backed API; deployed-backend and restart checks remain |
 | Phase 3 - AI operations | NOT STARTED | - |
 | Phase 4 - UX polish and edge cases | NOT STARTED | - |
 | Phase 5 - Delivery and self-assessment | NOT STARTED | - |
@@ -100,9 +100,28 @@ validation path.
 - [x] Finalize meal detail, edit, and delete behavior.
 - [x] Create a visual prototype for UI review before mobile implementation.
 - [x] Establish implementation constraints: reusable components, minimal code, and no scope beyond the Phase 2 requirements.
-- [ ] Review the prototype and approve UI changes.
-- [ ] Define the final mobile component and navigation structure.
-- [ ] Implement and test the Phase 2 flows.
+- [x] Review the prototype and approve the v0 UI direction.
+- [x] Define the mobile component and navigation structure.
+- [x] Implement the v0 flows with reusable primitives and a small API client.
+- [x] Run lint, Jest, TypeScript, Android build, and local emulator verification.
+- [ ] Verify data survives a complete app restart.
+- [ ] Verify the mobile app against the deployed API endpoint.
+
+## Phase 2 implementation evidence
+
+- AsyncStorage added for the anonymous guest token and restart persistence.
+- Reusable mobile primitives added for cards, buttons, fields, choices, meal rows,
+  loading, empty, and error states.
+- v0 flows implemented: goal setup, daily dashboard, add meal, meal detail, edit, and
+  delete confirmation.
+- API client uses the existing guest, goal, dashboard, and meal endpoints; AI and
+  media flows remain out of scope.
+- Mobile lint: passed.
+- Mobile Jest suite: passed; AsyncStorage test double added.
+- Mobile TypeScript check: passed.
+- Android debug build: passed with AsyncStorage native integration.
+- Android emulator manual check: passed; goal saved, dashboard loaded from local API,
+  meal saved to PostgreSQL, dashboard updated to 380 / 2000 kcal, and meal detail opened.
 
 The Phase 2 prototype is intentionally design-only. No production mobile screens have
 been implemented yet. AI estimation, photo analysis, voice input, chat, and wellness
