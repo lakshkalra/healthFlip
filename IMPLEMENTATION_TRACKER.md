@@ -8,7 +8,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 | Phase | Status | Completion evidence |
 | --- | --- | --- |
 | Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, and Android emulator launch verified |
-| Phase 1 - Backend foundation | COMPLETE | Schema, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
+| Phase 1 - Backend foundation | COMPLETE | Separate API repository, centralized table schemas, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
 | Phase 2 - Mobile core flows | NOT STARTED | - |
 | Phase 3 - AI operations | NOT STARTED | - |
 | Phase 4 - UX polish and edge cases | NOT STARTED | - |
@@ -19,8 +19,8 @@ No phase advances until its acceptance criteria are verified and recorded here.
 - [x] Initialize the React Native CLI app as `healthFlip`.
 - [x] Install JavaScript dependencies.
 - [x] Replace the starter screen with the branded `healthFlip` foundation screen.
-- [x] Add the `healthflip-api` backend boundary.
-- [x] Add local PostgreSQL Docker configuration.
+- [x] Add the `healthflip-api` service boundary in its own repository.
+- [x] Add local PostgreSQL Docker configuration to the API repository.
 - [x] Initialize the local Git repository.
 - [x] Install Android SDK platform/build tools 37.
 - [x] Boot an Android emulator and launch the branded app.
@@ -30,10 +30,8 @@ No phase advances until its acceptance criteria are verified and recorded here.
 
 ## Phase 0 files and systems changed
 
-- React Native CLI scaffold in the repository root.
-- `backend/` Fastify health boundary.
-- `docker-compose.yml` local PostgreSQL service.
-- `.env.example` files for local configuration.
+- React Native CLI scaffold in the `healthFlip` repository.
+- `healthflip-api` sibling repository for the Fastify service and local PostgreSQL.
 
 ## Phase 0 verification log
 
@@ -72,7 +70,9 @@ validation path.
 
 - [x] Add typed configuration, shared errors, validation, auth, and timezone helpers.
 - [x] Add Drizzle schema and checked-in SQL migration for guests, guest sessions, goals, and meal entries.
-- [x] Add reusable controller, service, repository, and schema modules for guests, goals, meals, and dashboard.
+- [x] Separate the API into its own `healthflip-api` repository.
+- [x] Add reusable controller, service, router, helper, and validator modules for guests, goals, meals, and dashboard.
+- [x] Centralize one Drizzle table schema per file under `src/db/schema/`, with data repositories under `src/db/repositories/`.
 - [x] Add anonymous token authentication with only a token hash persisted to PostgreSQL.
 - [x] Add guest-scoped goal, meal, and daily dashboard API routes.
 - [x] Add local development and isolated integration-test database workflows.
@@ -89,7 +89,8 @@ validation path.
 - Backend typecheck: passed.
 - Mobile lint and Jest suite: passed.
 - Production dependency audit: passed; zero known vulnerabilities.
-- Vercel preparation: complete; deploy `backend/` as the project root and provide `DATABASE_URL` after user authorization. No Vercel or managed-database credentials requested yet.
+- Architecture correction: passed; `healthFlip` and `healthflip-api` are independent Git repositories, and the API has the agreed module/database boundaries.
+- Vercel preparation: complete; deploy the `healthflip-api` repository as the project root and provide `DATABASE_URL` after user authorization. No Vercel or managed-database credentials requested yet.
 
 ## Credential requests
 

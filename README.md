@@ -1,6 +1,7 @@
 # healthFlip
 
-Personal health assistant v1, built with React Native CLI and a Fastify backend.
+Personal health assistant v1, built with React Native CLI and the separately versioned
+`healthflip-api` Fastify service.
 
 ## Project status
 
@@ -11,18 +12,18 @@ acceptance criteria, verification evidence, and blockers.
 ## Current foundation
 
 - React Native CLI mobile app for iOS and Android.
-- Fastify API boundary in `backend/`.
-- Docker Compose PostgreSQL configuration for local development.
+- This repository owns only the iOS and Android application.
+- The sibling `../healthflip-api` repository owns the API, database migrations, and
+  local PostgreSQL Docker Compose configuration.
 
 ## Backend foundation
 
-The Phase 1 backend is structured into guest, goals, meals, and dashboard modules,
-with controller, service, repository, and validation boundaries. See
-[`backend/README.md`](./backend/README.md) for local setup, migrations, testing, and
-Vercel deployment preparation.
+The Phase 1 API is maintained in the separate `healthflip-api` repository. Its
+domains contain controller, service, router, helper, and validator boundaries; shared
+table schemas and data repositories live in its central `src/db/` layer.
 
-The mobile app and backend feature flows will be added only after Phase 0's
-environment and launch checks are complete.
+Mobile feature flows will begin only after their Phase 2 prerequisite checklist is
+approved.
 
 This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
