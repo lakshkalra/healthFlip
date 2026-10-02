@@ -1,4 +1,4 @@
-import type { Dashboard, Goal, GoalType, Meal } from '../types';
+import type { Dashboard, Goal, GoalType, Meal, MealType } from '../types';
 import { dateKey } from '../meals';
 import { getGuestToken, saveGuestToken } from '../storage/session';
 
@@ -84,6 +84,42 @@ export async function updateMeal(mealId: string, input: Partial<MealInput>): Pro
 export async function deleteMeal(mealId: string): Promise<void> {
   await ensureGuest();
   await request<void>(`/v1/meals/${mealId}`, { method: 'DELETE' });
+}
+
+export type AiMealEstimate = {
+  assumptions: string[];
+  caloriesKcal: number;
+  carbsGrams: number | null;
+  confidence: 'low' | 'medium' | 'high';
+  fatGrams: number | null;
+  name: string;
+  proteinGrams: number | null;
+  source: 'ai' | 'fallback';
+};
+
+export type DailyInsight = {
+  date: string;
+  message: string;
+  nextAction: string;
+  source: 'ai' | 'fallback';
+};
+
+export async function estimateMeal(description: string, mealType: MealType): Promise<AiMealEstimate> {
+  await ensureGuest();
+  const response = await request<{ estimate: AiMealEstimate }>('/v1/ai/meal-estimate', {
+    body: JSON.stringify({ description, mealType }),
+    method: 'POST',
+  });
+  return response.estimate;
+}
+
+export async function getDailyInsight(date = dateKey()): Promise<DailyInsight> {
+  await ensureGuest();
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const response = await request<{ insight: DailyInsight }>(
+    `/v1/ai/daily-insight?date=${date}&timezone=${encodeURIComponent(timezone)}`,
+  );
+  return response.insight;
 }
 
 export type MealInput = {

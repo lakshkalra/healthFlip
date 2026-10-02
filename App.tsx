@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { createMeal, deleteMeal, getCurrentGoal, getDashboard, saveGoal, updateMeal, type MealInput } from './src/api/client';
+import { createMeal, deleteMeal, estimateMeal, getCurrentGoal, getDailyInsight, getDashboard, saveGoal, updateMeal, type DailyInsight, type MealInput } from './src/api/client';
 import { ProgressScreen } from './src/progress';
 import { RewardsScreen } from './src/rewards';
 import { TipsScreen } from './src/tips';
@@ -68,6 +68,8 @@ function Root() {
   const [boot, setBoot] = useState<BootState>('loading');
   const [target, setTarget] = useState(2000);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [insight, setInsight] = useState<DailyInsight | null>(null);
+  const [insightState, setInsightState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [dash, setDash] = useState<DashState>('loading');
   const [mealTypes, setMealTypes] = useState<MealTypes>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -108,6 +110,17 @@ function Root() {
     }
   }, []);
 
+  const loadInsight = useCallback(async () => {
+    setInsightState('loading');
+    try {
+      setInsight(await getDailyInsight());
+      setInsightState('ready');
+    } catch {
+      setInsight(null);
+      setInsightState('error');
+    }
+  }, []);
+
   // Bumped after any save/delete, so the Progress tab's cached history refetches.
   const bumpHistory = useCallback(() => setHistoryVersion(current => current + 1), []);
 
@@ -127,10 +140,11 @@ function Root() {
       setDashboard(await getDashboard());
       setDash('ready');
       setRoute('home');
+      loadInsight();
     } catch {
       setBoot('error');
     }
-  }, []);
+  }, [loadInsight]);
 
   // If the open meal disappears after a refresh, fall back to the home tab instead of a blank page.
   useEffect(() => {
@@ -148,6 +162,7 @@ function Root() {
     setEditingGoal(null);
     setRoute('home');
     loadDashboard(true);
+    loadInsight();
     bumpHistory();
   }
 
@@ -158,6 +173,7 @@ function Root() {
     setRoute('home');
     flash(mode === 'edit' ? 'Changes saved' : 'Meal logged. Nice one!');
     loadDashboard(false);
+    loadInsight();
     bumpHistory();
   }
 
@@ -194,6 +210,8 @@ function Root() {
             <DashboardScreen
               dashboard={viewing ?? dashboard}
               state={dash}
+              insight={insight}
+              insightState={insightState}
               target={dailyTarget}
               mealTypes={mealTypes}
               viewing={viewing}
@@ -205,6 +223,7 @@ function Root() {
               onBackToToday={() => setViewing(null)}
               onRefresh={() => loadDashboard(false)}
               onRetry={() => loadDashboard(true)}
+              onInsightRetry={loadInsight}
               onEditGoal={() => {
                 const goal = dashboard?.goal;
                 setEditingGoal(goal ? { dailyCalorieTarget: goal.dailyCalorieTarget, type: goal.type } : null);
@@ -396,7 +415,7 @@ function Greeting({ children }: { children?: React.ReactNode }) {
 
 // ---------- Page 2 · Today dashboard ----------
 
-function DashboardScreen({ dashboard, state, target, mealTypes, viewing, onAdd, onOpenMeal, onBackToToday, onRefresh, onRetry, onEditGoal }: { dashboard: Dashboard | null; state: DashState; target: number; mealTypes: MealTypes; viewing: Dashboard | null; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void; onBackToToday: () => void; onRefresh: () => void; onRetry: () => void; onEditGoal: () => void }) {
+function DashboardScreen({ dashboard, state, insight, insightState, target, mealTypes, viewing, onAdd, onOpenMeal, onBackToToday, onRefresh, onRetry, onInsightRetry, onEditGoal }: { dashboard: Dashboard | null; state: DashState; insight: DailyInsight | null; insightState: 'idle' | 'loading' | 'ready' | 'error'; target: number; mealTypes: MealTypes; viewing: Dashboard | null; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void; onBackToToday: () => void; onRefresh: () => void; onRetry: () => void; onInsightRetry: () => void; onEditGoal: () => void }) {
   const insets = useSafeAreaInsets();
   const now = viewing ? new Date(`${viewing.date}T12:00:00`) : new Date();
   const busy = !viewing && (state === 'loading' || state === 'refreshing');
@@ -432,7 +451,7 @@ function DashboardScreen({ dashboard, state, target, mealTypes, viewing, onAdd, 
             </View>
           ) : null}
           {!viewing && state === 'fail' ? <Banner message="Couldn't refresh. Showing your last update." onRetry={onRefresh} /> : null}
-          <DashboardContent dashboard={dashboard} target={target} mealTypes={mealTypes} now={now} viewing={!!viewing} onAdd={onAdd} onOpenMeal={onOpenMeal} />
+          <DashboardContent dashboard={dashboard} insight={insight} insightState={insightState} target={target} mealTypes={mealTypes} now={now} viewing={!!viewing} onAdd={onAdd} onOpenMeal={onOpenMeal} onInsightRetry={onInsightRetry} />
         </>
       ) : null}
     </ScrollView>
@@ -454,7 +473,7 @@ function DashboardSkeleton() {
   );
 }
 
-function DashboardContent({ dashboard, target, mealTypes, now, viewing, onAdd, onOpenMeal }: { dashboard: Dashboard; target: number; mealTypes: MealTypes; now: Date; viewing: boolean; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void }) {
+function DashboardContent({ dashboard, insight, insightState, target, mealTypes, now, viewing, onAdd, onOpenMeal, onInsightRetry }: { dashboard: Dashboard; insight: DailyInsight | null; insightState: 'idle' | 'loading' | 'ready' | 'error'; target: number; mealTypes: MealTypes; now: Date; viewing: boolean; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void; onInsightRetry: () => void }) {
   const meals = [...dashboard.meals].sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
   const consumed = dashboard.totalCalories;
   const remaining = target - consumed;
@@ -493,6 +512,8 @@ function DashboardContent({ dashboard, target, mealTypes, now, viewing, onAdd, o
         </View>
       </View>
 
+      {!viewing ? <KimboInsightCard insight={insight} state={insightState} onRetry={onInsightRetry} /> : null}
+
       <WeekStrip date={dashboard.date} now={now} countLabel={countLabel} />
 
       {!meals.length && !viewing ? (
@@ -523,6 +544,32 @@ function DashboardContent({ dashboard, target, mealTypes, now, viewing, onAdd, o
         ))
       )}
     </>
+  );
+}
+
+function KimboInsightCard({ insight, state, onRetry }: { insight: DailyInsight | null; state: 'idle' | 'loading' | 'ready' | 'error'; onRetry: () => void }) {
+  if (state === 'error') {
+    return <Banner message="Couldn't load today's wellness nudge." onRetry={onRetry} />;
+  }
+
+  return (
+    <Card style={screen.insightCard}>
+      <View style={screen.rowCenter10}>
+        <IconTile name="leaf" bg={colors.limeBright} fg={colors.greenDark} size={40} radius={14} iconSize={20} />
+        <View style={screen.grow}>
+          <Text style={screen.insightTitle}>Kimbo's nudge</Text>
+          <Text style={screen.insightLabel}>Wellness insight</Text>
+        </View>
+        {state === 'loading' ? <Spinner color={colors.greenDark} /> : null}
+      </View>
+      {state === 'loading' ? <Text style={screen.body14}>Finding something useful for today…</Text> : null}
+      {state === 'ready' && insight ? (
+        <View style={screen.gap6}>
+          <Text style={screen.body14}>{insight.message}</Text>
+          <Text style={screen.insightAction}>{insight.nextAction}</Text>
+        </View>
+      ) : null}
+    </Card>
   );
 }
 
@@ -679,6 +726,9 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
   );
   const [errors, setErrors] = useState<FormErrors>({});
   const [status, setStatus] = useState<'idle' | 'saving' | 'fail'>('idle');
+  const [aiDescription, setAiDescription] = useState('');
+  const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'fail'>('idle');
+  const [aiEstimate, setAiEstimate] = useState<{ assumptions: string[]; source: 'ai' | 'fallback' } | null>(null);
   const saving = status === 'saving';
 
   const update = (patch: Partial<MealForm>) => {
@@ -710,6 +760,19 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
     }
   }
 
+  async function handleEstimate() {
+    if (!aiDescription.trim() || aiStatus === 'loading') return;
+    setAiStatus('loading');
+    try {
+      const estimate = await estimateMeal(aiDescription.trim(), form.type);
+      update({ name: estimate.name, cal: String(estimate.caloriesKcal), p: toText(estimate.proteinGrams), c: toText(estimate.carbsGrams), f: toText(estimate.fatGrams) });
+      setAiEstimate({ assumptions: estimate.assumptions, source: estimate.source });
+      setAiStatus('idle');
+    } catch {
+      setAiStatus('fail');
+    }
+  }
+
   const macroField = (key: 'p' | 'c' | 'f', label: string) => (
     <View style={[ui.flex, screen.gap4]}>
       <InputShell error={!!errors[key]} style={screen.macroShell}>
@@ -735,6 +798,23 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
           <FoodPicker value={form.name} error={!!errors.name} onPick={food => update({ name: food.name, cal: String(food.cal), p: String(food.p), c: String(food.c), f: String(food.f) })} />
           <FieldError message={errors.name} />
         </View>
+        {mode === 'add' ? (
+          <Card style={screen.aiCard}>
+            <View style={screen.rowCenter10}>
+              <IconTile name="leaf" bg={colors.limeBright} fg={colors.greenDark} size={38} radius={13} iconSize={19} />
+              <View style={screen.grow}>
+                <Text style={screen.label14}>Estimate with AI</Text>
+                <Text style={screen.hint}>Describe the meal and review the rough estimate.</Text>
+              </View>
+            </View>
+            <InputShell>
+              <TextInput accessibilityLabel="AI meal description" value={aiDescription} onChangeText={setAiDescription} placeholder="e.g. 2 eggs with toast" placeholderTextColor={colors.faint} style={screen.aiInput} />
+            </InputShell>
+            <PillButton title="Estimate with AI" icon="leaf" variant="light" height={46} busy={aiStatus === 'loading'} busyLabel="Estimating…" onPress={handleEstimate} />
+            {aiEstimate ? <Text style={screen.aiNote}>{aiEstimate.assumptions.join(' ')}</Text> : null}
+            {aiStatus === 'fail' ? <Banner message="AI estimate unavailable. You can still enter the meal manually." /> : null}
+          </Card>
+        ) : null}
         <View style={screen.gap6}>
           <Text style={screen.label14}>Which meal?</Text>
           <View style={screen.row6}>
@@ -932,6 +1012,10 @@ const screen = StyleSheet.create({
   skeletonText: { color: colors.muted, fontSize: 14, fontWeight: '600' },
   refreshChip: { alignItems: 'center', alignSelf: 'center', backgroundColor: colors.pale, borderRadius: 99, flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 7 },
   refreshText: { color: colors.greenDark, fontSize: 13, fontWeight: '600' },
+  insightCard: { backgroundColor: colors.white, gap: 12, padding: 16 },
+  insightTitle: { color: colors.ink, fontSize: 15, fontWeight: '800' },
+  insightLabel: { color: colors.muted2, fontSize: 12 },
+  insightAction: { color: colors.greenDark, fontSize: 13, fontWeight: '700', lineHeight: 19 },
   hero: { backgroundColor: colors.lime, borderRadius: 28, gap: 16, padding: 20 },
   heroTop: { alignItems: 'center', flexDirection: 'row', gap: 14 },
   kicker: { alignItems: 'center', flexDirection: 'row', gap: 6 },
@@ -987,6 +1071,9 @@ const screen = StyleSheet.create({
   sheetFooter: { borderTopColor: colors.chip, borderTopWidth: 1, gap: 10, paddingHorizontal: 20, paddingTop: 10 },
   foodShell: { gap: 10, paddingRight: 14 },
   foodInput: { color: colors.ink, flex: 1, fontSize: 16, fontWeight: '600', minWidth: 0, padding: 0 },
+  aiCard: { backgroundColor: colors.pale, gap: 10, padding: 14 },
+  aiInput: { color: colors.ink, flex: 1, fontSize: 15, minWidth: 0, padding: 0 },
+  aiNote: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   chevron: { alignItems: 'center', height: 28, justifyContent: 'center', width: 28 },
   picker: { backgroundColor: colors.white, borderRadius: 18, boxShadow: '0 0 0 1.5px #e6eadc, 0 8px 18px rgba(28,31,26,.08)', marginTop: 2, padding: 6 },
   pickerList: { maxHeight: 232 },

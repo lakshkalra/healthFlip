@@ -10,7 +10,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 | Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, Android emulator launch, and iOS simulator build/launch verified |
 | Phase 1 - Backend foundation | COMPLETE | Separate API repository, centralized table schemas, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
 | Phase 2 - Mobile core flows | COMPLETE | v0 mobile flows, restart persistence, hosted API CRUD, and fresh Android hosted-API launch verified |
-| Phase 3 - AI operations | IN PROGRESS | Phase 3.0 contracts and safety boundary finalized; backend implementation has not started |
+| Phase 3 - AI operations | IN PROGRESS | Fallback AI API and mobile text/insight integration verified; live Gemini, voice, and image work remain |
 | Phase 4 - UX polish and edge cases | NOT STARTED | - |
 | Phase 5 - Delivery and self-assessment | NOT STARTED | - |
 
@@ -226,6 +226,33 @@ input, chat, and wellness insights remain Phase 3 scope.
 - Backend test suite: passed; 7 tests covering existing API behavior, fallback
   estimation, persisted-context insights, validation, and provider timeout mapping.
 - Gemini, voice input, image input, and mobile AI UI remain pending.
+
+### Phase 3 mobile integration evidence (2026-10-02)
+
+- Added typed mobile client methods for `POST /v1/ai/meal-estimate` and
+  `GET /v1/ai/daily-insight`.
+- Added the `Estimate with AI` meal-entry flow. The returned name, calories, and
+  macros populate editable fields; fallback assumptions are shown for review.
+- Added Kimbo's daily wellness nudge to the dashboard with loading and retry/error
+  states. It refreshes after goal and meal changes.
+- Host-level API smoke test: guest bootstrap, fallback meal estimate, and persisted
+  daily insight all returned the expected structured responses.
+- Mobile lint: passed.
+- Mobile TypeScript check: passed.
+- Mobile Jest suite: passed; 1 suite and 6 tests.
+- Android debug build/install: passed on `emulator-5554`; `com.healthflip` launched.
+- Android Studio reports an AGP 9.2.1 compatibility warning during IDE sync; the
+  command-line React Native build and installation are successful.
+
+### Phase 3 remaining checklist
+
+- [ ] Add and verify the live Gemini provider adapter (requires Gemini API key).
+- [x] Connect text meal estimation to the mobile meal-entry flow using the fallback provider.
+- [x] Connect Kimbo's persisted daily insight to the mobile dashboard.
+- [ ] Add voice input with deterministic unavailable-provider behavior.
+- [ ] Add image input with deterministic unavailable-provider behavior.
+- [ ] Add AI-specific mobile interaction tests for estimate success and failure.
+- [ ] Complete end-to-end Phase 3 manual verification and mark the phase `COMPLETE`.
 
 The authoritative Phase 3 contract is documented in
 `healthflip-api/docs/phase-3-ai-spec.md`. No Gemini credential is required until the
