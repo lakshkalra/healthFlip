@@ -7,7 +7,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 
 | Phase | Status | Completion evidence |
 | --- | --- | --- |
-| Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, and Android emulator launch verified |
+| Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, Android emulator launch, and iOS simulator build/launch verified |
 | Phase 1 - Backend foundation | COMPLETE | Separate API repository, centralized table schemas, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
 | Phase 2 - Mobile core flows | IN PROGRESS | Functional flow specification documented; v0 flows manually verified against local PostgreSQL-backed API; Figma styling and final acceptance remain |
 | Phase 3 - AI operations | NOT STARTED | - |
@@ -24,6 +24,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 - [x] Initialize the local Git repository.
 - [x] Install Android SDK platform/build tools 37.
 - [x] Boot an Android emulator and launch the branded app.
+- [x] Install the iOS runtime, boot an iPhone simulator, and launch the branded iOS build.
 - [x] Start the backend locally and verify `GET /health`.
 - [x] Start PostgreSQL locally and verify the backend database connection path.
 - [x] Record the Phase 0 completion commit.
@@ -53,18 +54,20 @@ No phase advances until its acceptance criteria are verified and recorded here.
 - Docker CLI: available.
 - Docker daemon: passed; Docker Desktop is running and the `healthflip-postgres` container is healthy.
 - Android environment: passed; API 36 emulator and project-required SDK platform 37 are available.
-- iPhone launch: deferred by product decision; Android emulator is the Phase 0 native validation target.
+- iPhone launch: passed on the installed iOS 27.0 runtime using the iPhone 18 Pro simulator; the app reached its branded loading screen.
 
-## Deferred iOS setup
+## iOS setup notes
 
-The updated Xcode 27 installation is available but has not been selected as the active
-developer directory. CocoaPods also still needs a supported Ruby toolchain. These are
-not Phase 0 blockers because the Android emulator now provides the required native
-validation path.
+The updated Xcode 27 installation is available and works when selected through
+`DEVELOPER_DIR`. The system-wide developer directory remains Command Line Tools;
+changing it requires macOS administrator authentication, which is optional because
+the project commands can use the explicit Xcode path.
 
-1. Accept the Apple Xcode SDK licence when iOS work resumes.
-2. Install a supported Ruby/CocoaPods toolchain, then run the iOS pod install.
-3. Select Xcode 27 as the active developer directory and launch on the iPhone 15 Pro.
+1. CocoaPods is installed through Homebrew and the workspace is generated at
+   `ios/healthFlip.xcworkspace`.
+2. The Podfile targets iOS 15.1, matching the React Native 0.87 dependencies and
+   Xcode 27 simulator support.
+3. The iOS app uses the UIKit scene lifecycle required by the Xcode 27 SDK.
 
 Current iOS setup check on 2026-10-02:
 
@@ -72,9 +75,13 @@ Current iOS setup check on 2026-10-02:
 - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -version` passed.
 - The system-wide developer directory is still Command Line Tools; changing it requires
   macOS administrator authentication, which was not requested or entered.
-- Xcode currently reports zero available iOS runtimes and zero simulator devices.
-- The Simulator cannot launch until an iOS runtime is installed from Xcode Settings >
-  Components.
+- iOS 27.0 runtime is installed and the iPhone 18 Pro simulator is available and booted.
+- CocoaPods installation passed and the healthFlip workspace exposes the `healthFlip` scheme.
+- `xcodebuild ... -destination 'id=49147A48-D7C2-43AE-947D-CAAF514768B5' build` passed.
+- The app installed and launched on the simulator; the captured screen showed the
+  branded `Loading healthFlip...` screen.
+- Full iOS API-flow verification remains a Phase 2 item because the local API endpoint
+  currently uses the Android emulator host address.
 
 ## Phase 1 checklist
 
