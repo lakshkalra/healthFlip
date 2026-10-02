@@ -1,6 +1,6 @@
-import type { GoalType, Meal } from './types';
+import type { GoalType, Meal, MealType } from './types';
 
-export type MealType = 'breakfast' | 'lunch' | 'snacks' | 'dinner';
+export type { MealType } from './types';
 
 export const MEAL_TYPES: { id: MealType; label: string }[] = [
   { id: 'breakfast', label: 'Breakfast' },
@@ -44,8 +44,8 @@ export function typeForHour(hour = new Date().getHours()): MealType {
   return hour < 11 ? 'breakfast' : hour < 16 ? 'lunch' : hour < 19 ? 'snacks' : 'dinner';
 }
 
-export function mealTypeOf(meal: Meal, saved: Record<string, MealType>): MealType {
-  return saved[meal.id] ?? typeForHour(new Date(meal.loggedAt).getHours());
+export function mealTypeOf(meal: Meal): MealType {
+  return meal.mealType ?? typeForHour(new Date(meal.loggedAt).getHours());
 }
 
 export function mealTypeLabel(type: MealType): string {

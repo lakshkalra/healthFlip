@@ -52,7 +52,7 @@ test('routes a first-run guest to goal setup', async () => {
 
 test('shows a returning user the dashboard grouped by meal type', async () => {
   const today = new Date().toISOString().slice(0, 10);
-  const meal = { id: 'm1', name: 'Poha with peanuts', caloriesKcal: 320, proteinGrams: 8, carbsGrams: 52, fatGrams: 9, note: null, source: 'manual', loggedAt: `${today}T08:15:00` };
+  const meal = { id: 'm1', name: 'Poha with peanuts', caloriesKcal: 320, proteinGrams: 8, carbsGrams: 52, fatGrams: 9, note: null, source: 'manual', mealType: 'breakfast', loggedAt: `${today}T08:15:00` };
   const goal = { id: 'g1', type: 'maintain', dailyCalorieTarget: 2000, startsOn: today };
   globalThis.fetch = jest.fn((url: string) =>
     Promise.resolve({

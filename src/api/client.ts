@@ -94,6 +94,7 @@ export type MealInput = {
   caloriesKcal: number;
   carbsGrams?: number;
   fatGrams?: number;
+  mealType: 'breakfast' | 'lunch' | 'snacks' | 'dinner';
   name: string;
   note?: string;
   proteinGrams?: number;

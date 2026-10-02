@@ -16,7 +16,8 @@ Phase 2 includes:
 - Loading, empty, validation, retry, unavailable API, and restart states.
 
 Phase 2 excludes AI estimation, photo analysis, voice input, chat, reports, history,
-rewards, settings, and authentication accounts.
+rewards, and settings. The v1 has no sign-up or login; its anonymous device session
+is internal only and not shown to the user.
 
 ## App-wide startup flow
 
@@ -102,7 +103,8 @@ rewards, settings, and authentication accounts.
 ### Page 3 — Add meal
 
 1. Open from `Log a meal` on Page 2.
-2. Enter a meal name.
+2. Enter a meal name directly, or select a known food from the optional local food
+   suggestions.
 3. Enter calories.
 4. Optionally enter protein.
 5. Optionally enter carbohydrates.
@@ -110,11 +112,12 @@ rewards, settings, and authentication accounts.
 7. Optionally enter a note.
 8. Use the current time as the v0 logged time.
 9. Use `manual` as the v0 source.
-10. Submit with `Save meal`.
+10. Select breakfast, lunch, snacks, or dinner; this category is persisted with the meal.
+11. Submit with `Save meal`.
 
 ### Page 3 validation
 
-- Meal name is required and must not be blank.
+- Meal name is required and must not be blank; selecting a suggested food is optional.
 - Calories are required and must be a non-negative integer.
 - Optional nutrition values must be non-negative integers when provided.
 - Show field-level or form-level actionable validation.
@@ -160,6 +163,15 @@ rewards, settings, and authentication accounts.
 6. Delete submits `DELETE /v1/meals/:mealId`.
 7. On success, return to Page 2 and reload totals.
 8. On failure, keep the meal and show Retry.
+
+## Flow 5 — Edit daily goal
+
+1. Open from the dashboard goal summary.
+2. Pre-fill the current goal type and daily calorie target.
+3. Apply the same validation as first-run goal setup.
+4. Save through `PUT /v1/goals/current`.
+5. Return to the dashboard with the updated target and progress.
+6. Cancel returns to the dashboard without changing persisted data.
 
 ## Persistence and restart flow
 

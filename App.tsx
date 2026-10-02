@@ -17,7 +17,6 @@ import {
   typeForHour,
   type MealType,
 } from './src/meals';
-import { getMealTypes, setMealType } from './src/storage/session';
 import type { Dashboard, GoalType, Meal } from './src/types';
 import {
   Banner,
@@ -44,8 +43,6 @@ import {
 type Route = 'boot' | 'goal' | 'dash' | 'detail';
 type BootState = 'loading' | 'first' | 'returning' | 'error';
 type DashState = 'loading' | 'ready' | 'refreshing' | 'fail' | 'error';
-type MealTypes = Record<string, MealType>;
-
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 function App() {
@@ -64,8 +61,8 @@ function Root() {
   const [target, setTarget] = useState(2000);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dash, setDash] = useState<DashState>('loading');
-  const [mealTypes, setMealTypes] = useState<MealTypes>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingGoal, setEditingGoal] = useState(false);
   const [sheet, setSheet] = useState<{ open: boolean; mode: 'add' | 'edit'; type: MealType; key: number }>({ open: false, mode: 'add', type: 'breakfast', key: 0 });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, key: 0 });
   const [toast, setToast] = useState('');
@@ -100,7 +97,6 @@ function Root() {
     setBoot('loading');
     try {
       const goal = await getCurrentGoal();
-      setMealTypes(await getMealTypes());
       if (!goal) {
         setBoot('first');
         await wait(1200);
@@ -129,8 +125,7 @@ function Root() {
     loadDashboard(true);
   }
 
-  function handleMealSaved(types: MealTypes, mode: 'add' | 'edit') {
-    setMealTypes(types);
+  function handleMealSaved(mode: 'add' | 'edit') {
     setSheet(current => ({ ...current, open: false }));
     setRoute('dash');
     flash(mode === 'edit' ? 'Changes saved' : 'Meal logged. Nice one!');
@@ -140,7 +135,6 @@ function Root() {
   async function handleDelete() {
     if (!selected) return;
     await deleteMeal(selected.id);
-    setMealTypes(await setMealType(selected.id, null));
     setDeleteDialog(current => ({ ...current, open: false }));
     setRoute('dash');
     flash('Meal deleted');
@@ -152,14 +146,21 @@ function Root() {
   return (
     <View style={[ui.flex, { backgroundColor: route === 'boot' ? colors.lime : colors.bg }]}>
       {route === 'boot' ? <BootScreen state={boot} onRetry={start} /> : null}
-      {route === 'goal' ? <GoalSetup onSave={handleGoalSaved} /> : null}
+      {route === 'goal' ? (
+        <GoalSetup
+          initialType={editingGoal ? dashboard?.goal?.type : undefined}
+          initialTarget={editingGoal ? dashboard?.goal?.dailyCalorieTarget : undefined}
+          onCancel={editingGoal ? () => { setEditingGoal(false); setRoute('dash'); } : undefined}
+          onSave={handleGoalSaved}
+        />
+      ) : null}
       {route === 'dash' ? (
         <DashboardScreen
           dashboard={dashboard}
           state={dash}
           target={dailyTarget}
-          mealTypes={mealTypes}
           onAdd={openAdd}
+          onEditGoal={() => { setEditingGoal(true); setRoute('goal'); }}
           onOpenMeal={meal => {
             setSelectedId(meal.id);
             setRoute('detail');
@@ -171,10 +172,10 @@ function Root() {
       {route === 'detail' && selected ? (
         <MealDetail
           meal={selected}
-          type={mealTypeOf(selected, mealTypes)}
+          type={mealTypeOf(selected)}
           target={dailyTarget}
           onBack={() => setRoute('dash')}
-          onEdit={() => setSheet({ open: true, mode: 'edit', type: mealTypeOf(selected, mealTypes), key: Date.now() })}
+          onEdit={() => setSheet({ open: true, mode: 'edit', type: mealTypeOf(selected), key: Date.now() })}
           onDelete={() => setDeleteDialog({ open: true, key: Date.now() })}
         />
       ) : null}
@@ -232,10 +233,10 @@ function BootScreen({ state, onRetry }: { state: BootState; onRetry: () => void 
 
 const goalIcons: Record<GoalType, IconName> = { lose: 'trendDown', maintain: 'equals', gain: 'trendUp' };
 
-function GoalSetup({ onSave }: { onSave: (goal: { dailyCalorieTarget: number; type: GoalType }) => Promise<void> }) {
+function GoalSetup({ initialType, initialTarget, onCancel, onSave }: { initialType?: GoalType; initialTarget?: number; onCancel?: () => void; onSave: (goal: { dailyCalorieTarget: number; type: GoalType }) => Promise<void> }) {
   const insets = useSafeAreaInsets();
-  const [type, setType] = useState<GoalType>('maintain');
-  const [targetText, setTargetText] = useState('2000');
+  const [type, setType] = useState<GoalType>(initialType ?? 'maintain');
+  const [targetText, setTargetText] = useState(String(initialTarget ?? 2000));
   const [error, setError] = useState('');
   const [status, setStatus] = useState<'idle' | 'saving' | 'fail'>('idle');
 
@@ -262,10 +263,13 @@ function GoalSetup({ onSave }: { onSave: (goal: { dailyCalorieTarget: number; ty
 
   return (
     <ScrollView style={ui.flex} contentContainerStyle={[screen.goal, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 24 }]} keyboardShouldPersistTaps="handled">
-      <Greeting />
+      <View style={screen.setupHeader}>
+        <Greeting />
+        {onCancel ? <RoundIconButton name="arrowLeft" label="Cancel" bg={colors.chip} size={40} iconSize={18} stroke={2.6} onPress={onCancel} /> : null}
+      </View>
       <View style={screen.gap8}>
-        <Text style={screen.goalTitle}>What are you aiming for?</Text>
-        <Text style={screen.body}>Pick a goal and a daily calorie target to get started.</Text>
+        <Text style={screen.goalTitle}>{onCancel ? 'Update your goal' : 'What are you aiming for?'}</Text>
+        <Text style={screen.body}>{onCancel ? 'Adjust your daily target whenever your needs change.' : 'Pick a goal and a daily calorie target to get started.'}</Text>
       </View>
       <View style={screen.gap10}>
         {GOALS.map(goal => {
@@ -303,7 +307,7 @@ function GoalSetup({ onSave }: { onSave: (goal: { dailyCalorieTarget: number; ty
       </Card>
       <View style={ui.flex} />
       {status === 'fail' ? <Banner icon message="We couldn't save your goal. Check your connection and try again." /> : null}
-      <PillButton title={status === 'fail' ? 'Retry' : 'Set my goal'} busy={status === 'saving'} busyLabel="Saving your goal…" glow onPress={submit} />
+      <PillButton title={status === 'fail' ? 'Retry' : onCancel ? 'Save goal' : 'Set my goal'} busy={status === 'saving'} busyLabel="Saving your goal…" glow onPress={submit} />
     </ScrollView>
   );
 }
@@ -319,7 +323,7 @@ function Greeting({ children }: { children?: React.ReactNode }) {
 
 // ---------- Page 2 · Today dashboard ----------
 
-function DashboardScreen({ dashboard, state, target, mealTypes, onAdd, onOpenMeal, onRefresh, onRetry }: { dashboard: Dashboard | null; state: DashState; target: number; mealTypes: MealTypes; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void; onRefresh: () => void; onRetry: () => void }) {
+function DashboardScreen({ dashboard, state, target, onAdd, onEditGoal, onOpenMeal, onRefresh, onRetry }: { dashboard: Dashboard | null; state: DashState; target: number; onAdd: (type?: MealType) => void; onEditGoal: () => void; onOpenMeal: (meal: Meal) => void; onRefresh: () => void; onRetry: () => void }) {
   const insets = useSafeAreaInsets();
   const now = new Date();
   const busy = state === 'loading' || state === 'refreshing';
@@ -336,7 +340,10 @@ function DashboardScreen({ dashboard, state, target, mealTypes, onAdd, onOpenMea
             <Text style={screen.small}>Hello there!</Text>
             <Text style={screen.headline}>{dateLabel}</Text>
           </View>
-          <RoundIconButton name="refresh" label="Refresh" busy={busy} onPress={onRefresh} />
+          <View style={screen.row6}>
+            <RoundIconButton name="pencil" label="Edit goal" bg={colors.chip} onPress={onEditGoal} />
+            <RoundIconButton name="refresh" label="Refresh" busy={busy} onPress={onRefresh} />
+          </View>
         </Greeting>
 
         {state === 'loading' ? <DashboardSkeleton /> : null}
@@ -352,7 +359,7 @@ function DashboardScreen({ dashboard, state, target, mealTypes, onAdd, onOpenMea
               </View>
             ) : null}
             {state === 'fail' ? <Banner message="Couldn't refresh. Showing your last update." onRetry={onRefresh} /> : null}
-            <DashboardContent dashboard={dashboard} target={target} mealTypes={mealTypes} now={now} onAdd={onAdd} onOpenMeal={onOpenMeal} />
+            <DashboardContent dashboard={dashboard} target={target} now={now} onAdd={onAdd} onOpenMeal={onOpenMeal} />
           </>
         ) : null}
       </ScrollView>
@@ -376,7 +383,7 @@ function DashboardSkeleton() {
   );
 }
 
-function DashboardContent({ dashboard, target, mealTypes, now, onAdd, onOpenMeal }: { dashboard: Dashboard; target: number; mealTypes: MealTypes; now: Date; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void }) {
+function DashboardContent({ dashboard, target, now, onAdd, onOpenMeal }: { dashboard: Dashboard; target: number; now: Date; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void }) {
   const meals = [...dashboard.meals].sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
   const consumed = dashboard.totalCalories;
   const remaining = target - consumed;
@@ -423,7 +430,7 @@ function DashboardContent({ dashboard, target, mealTypes, now, onAdd, onOpenMeal
         </Card>
       ) : (
         MEAL_TYPES.map(({ id, label }) => {
-          const items = meals.filter(meal => mealTypeOf(meal, mealTypes) === id);
+          const items = meals.filter(meal => mealTypeOf(meal) === id);
           const kcal = items.reduce((total, meal) => total + (meal.caloriesKcal ?? 0), 0);
           if (!items.length) {
             return (
@@ -592,7 +599,7 @@ const toText = (value: number | null) => (value === null ? '' : String(value));
 
 function validate(form: MealForm): FormErrors {
   const errors: FormErrors = {};
-  if (!form.name.trim()) errors.name = 'Choose a food from the list.';
+  if (!form.name.trim()) errors.name = 'Enter a meal name or choose a food.';
   if (!form.cal.trim()) errors.cal = 'Add calories, even a rough guess.';
   else if (!isWholeNumber(form.cal)) errors.cal = 'Use a whole number, 0 or more.';
   (['p', 'c', 'f'] as const).forEach(key => {
@@ -601,7 +608,7 @@ function validate(form: MealForm): FormErrors {
   return errors;
 }
 
-function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { visible: boolean; mode: 'add' | 'edit'; initialType: MealType; meal: Meal | null; onClose: () => void; onSaved: (types: MealTypes, mode: 'add' | 'edit') => void }) {
+function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { visible: boolean; mode: 'add' | 'edit'; initialType: MealType; meal: Meal | null; onClose: () => void; onSaved: (mode: 'add' | 'edit') => void }) {
   const insets = useSafeAreaInsets();
   const [form, setForm] = useState<MealForm>(() =>
     meal
@@ -626,15 +633,16 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
     const nextErrors = validate(form);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
-    const input: MealInput = { caloriesKcal: Number(form.cal), name: form.name.trim() };
+    const input: MealInput = { caloriesKcal: Number(form.cal), mealType: form.type, name: form.name.trim() };
     if (form.p.trim()) input.proteinGrams = Number(form.p);
     if (form.c.trim()) input.carbsGrams = Number(form.c);
     if (form.f.trim()) input.fatGrams = Number(form.f);
     if (form.note.trim()) input.note = form.note.trim();
     setStatus('saving');
     try {
-      const saved = mode === 'edit' && meal ? await updateMeal(meal.id, input) : await createMeal(input);
-      onSaved(await setMealType(saved.id, form.type), mode);
+      if (mode === 'edit' && meal) await updateMeal(meal.id, input);
+      else await createMeal(input);
+      onSaved(mode);
     } catch {
       setStatus('fail');
     }
@@ -662,7 +670,7 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
       <ScrollView style={screen.sheetBody} contentContainerStyle={screen.sheetContent} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
         <View style={screen.gap6}>
           <Text style={screen.label14}>Food</Text>
-          <FoodPicker value={form.name} error={!!errors.name} onPick={food => update({ name: food.name, cal: String(food.cal), p: String(food.p), c: String(food.c), f: String(food.f) })} />
+          <FoodPicker value={form.name} error={!!errors.name} onChange={name => update({ name })} onPick={food => update({ name: food.name, cal: String(food.cal), p: String(food.p), c: String(food.c), f: String(food.f) })} />
           <FieldError message={errors.name} />
         </View>
         <View style={screen.gap6}>
@@ -720,7 +728,7 @@ function FieldLabel({ title, hint }: { title: string; hint: string }) {
   );
 }
 
-function FoodPicker({ value, error, onPick }: { value: string; error: boolean; onPick: (food: (typeof FOODS)[number]) => void }) {
+function FoodPicker({ value, error, onChange, onPick }: { value: string; error: boolean; onChange: (value: string) => void; onPick: (food: (typeof FOODS)[number]) => void }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
@@ -732,9 +740,9 @@ function FoodPicker({ value, error, onPick }: { value: string; error: boolean; o
         <TextInput
           accessibilityLabel="Food"
           value={open ? query : value}
-          onChangeText={text => { setQuery(text); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          placeholder={value || 'Search or choose a food'}
+          onChangeText={text => { setQuery(text); onChange(text); setOpen(true); }}
+          onFocus={() => { setQuery(value); setOpen(true); }}
+          placeholder={value || 'Search or type a meal'}
           placeholderTextColor={value ? colors.ink : colors.faint}
           style={screen.foodInput}
         />
@@ -746,6 +754,7 @@ function FoodPicker({ value, error, onPick }: { value: string; error: boolean; o
       </InputShell>
       {open ? (
         <View style={screen.picker}>
+          <Text style={screen.pickerHint}>Choose a food or type your own meal name.</Text>
           <ScrollView style={screen.pickerList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {foods.map(food => {
               const on = food.name === value;
@@ -814,6 +823,7 @@ const screen = StyleSheet.create({
   gap10: { gap: 10 },
   gap14: { gap: 14 },
   fullWidth: { alignSelf: 'stretch' },
+  setupHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   spacer44: { width: 44 },
   bold: { color: colors.ink, fontWeight: '700' },
   body: { color: colors.muted, fontSize: 15, lineHeight: 22 },
@@ -915,6 +925,7 @@ const screen = StyleSheet.create({
   foodInput: { color: colors.ink, flex: 1, fontSize: 16, fontWeight: '600', minWidth: 0, padding: 0 },
   chevron: { alignItems: 'center', height: 28, justifyContent: 'center', width: 28 },
   picker: { backgroundColor: colors.white, borderRadius: 18, boxShadow: '0 0 0 1.5px #e6eadc, 0 8px 18px rgba(28,31,26,.08)', marginTop: 2, padding: 6 },
+  pickerHint: { color: colors.muted2, fontSize: 12, paddingHorizontal: 8, paddingTop: 6 },
   pickerList: { maxHeight: 232 },
   foodRow: { alignItems: 'center', borderRadius: 12, flexDirection: 'row', gap: 10, paddingHorizontal: 10, paddingVertical: 9 },
   foodCal: { color: '#3f443a', fontSize: 13, fontWeight: '600' },

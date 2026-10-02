@@ -1,5 +1,6 @@
 export type GoalType = 'lose' | 'maintain' | 'gain';
 export type MealSource = 'manual' | 'photo' | 'voice';
+export type MealType = 'breakfast' | 'lunch' | 'snacks' | 'dinner';
 
 export type Goal = {
   dailyCalorieTarget: number;
@@ -14,6 +15,7 @@ export type Meal = {
   fatGrams: number | null;
   id: string;
   loggedAt: string;
+  mealType: MealType;
   name: string;
   note: string | null;
   proteinGrams: number | null;

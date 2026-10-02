@@ -111,6 +111,22 @@ Current iOS setup check on 2026-10-02:
 
 ## Phase 2 design checkpoint
 
+### Phase 2 closure objective
+
+Finish and verify the non-AI user journey before beginning Phase 3. This phase
+has no account sign-up or login. The existing anonymous device session remains
+an internal data-scoping mechanism only.
+
+### Phase 2 closure checklist
+
+- [x] Allow a user to save a custom meal name without selecting the local food list.
+- [x] Persist the selected meal category in PostgreSQL and return it through the API.
+- [x] Add a dashboard path to edit an existing daily goal.
+- [x] Add or update automated coverage for the changed API/mobile contracts.
+- [x] Apply the new local database migration and verify the full manual flow.
+- [x] Verify goal and meals survive a complete app restart.
+- [ ] Verify the same flow against a deployed API endpoint after GitHub/Vercel/database access is authorized.
+
 - [x] Finalize the first-run goal setup flow.
 - [x] Finalize the daily dashboard flow.
 - [x] Finalize the manual add-meal flow.
@@ -123,7 +139,7 @@ Current iOS setup check on 2026-10-02:
 - [x] Document the complete Phase 2 page-by-page functional flow.
 - [x] Run lint, Jest, TypeScript, Android build, and local emulator verification.
 - [x] Implement and verify the Claude design handoff on the iOS simulator.
-- [ ] Verify data survives a complete app restart.
+- [x] Verify data survives a complete app restart.
 - [ ] Verify the mobile app against the deployed API endpoint.
 
 ## Phase 2 implementation evidence
@@ -151,6 +167,15 @@ Current iOS setup check on 2026-10-02:
   setup screen, and the guest bootstrap request returned HTTP 200 from the local API.
 - iOS runtime fix: the API client now selects the correct local host per platform. The
   previous iOS failure was caused by the Android-only `10.0.2.2` address.
+- Phase 2 closure migration: `meal_type` is now a PostgreSQL enum on `meal_entries`.
+  The API validates and returns it, and the mobile app no longer stores meal category
+  as device-only metadata.
+- Phase 2 closure checks: mobile lint, TypeScript, and Jest passed; API typecheck,
+  migration check, and the 4-test isolated PostgreSQL integration suite passed.
+- Android manual closure verification: saved the custom meal `Homemade pasta` without
+  choosing a suggestion, under Lunch at 510 kcal; the dashboard updated to 510 / 2000
+  kcal, and the same goal, meal, total, and category were present after force-closing
+  and reopening the app.
 
 The authoritative functional flow is documented in
 `docs/phase-2-flow-spec.md`. The Claude design handoff is sufficient for v0 flow
