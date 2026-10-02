@@ -9,7 +9,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 | --- | --- | --- |
 | Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, and Android emulator launch verified |
 | Phase 1 - Backend foundation | COMPLETE | Separate API repository, centralized table schemas, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
-| Phase 2 - Mobile core flows | NOT STARTED | - |
+| Phase 2 - Mobile core flows | IN PROGRESS | Flow design prototype prepared; implementation is waiting for UI review |
 | Phase 3 - AI operations | NOT STARTED | - |
 | Phase 4 - UX polish and edge cases | NOT STARTED | - |
 | Phase 5 - Delivery and self-assessment | NOT STARTED | - |
@@ -91,6 +91,22 @@ validation path.
 - Production dependency audit: passed; zero known vulnerabilities.
 - Architecture correction: passed; `healthFlip` and `healthflip-api` are independent Git repositories, and the API has the agreed module/database boundaries.
 - Vercel preparation: complete; deploy the `healthflip-api` repository as the project root and provide `DATABASE_URL` after user authorization. No Vercel or managed-database credentials requested yet.
+
+## Phase 2 design checkpoint
+
+- [x] Finalize the first-run goal setup flow.
+- [x] Finalize the daily dashboard flow.
+- [x] Finalize the manual add-meal flow.
+- [x] Finalize meal detail, edit, and delete behavior.
+- [x] Create a visual prototype for UI review before mobile implementation.
+- [x] Establish implementation constraints: reusable components, minimal code, and no scope beyond the Phase 2 requirements.
+- [ ] Review the prototype and approve UI changes.
+- [ ] Define the final mobile component and navigation structure.
+- [ ] Implement and test the Phase 2 flows.
+
+The Phase 2 prototype is intentionally design-only. No production mobile screens have
+been implemented yet. AI estimation, photo analysis, voice input, chat, and wellness
+insights remain Phase 3 scope.
 
 ## Credential requests
 
