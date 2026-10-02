@@ -1,7 +1,12 @@
+import { Platform } from 'react-native';
+
 import type { Dashboard, Goal, GoalType, Meal } from '../types';
 import { getGuestToken, saveGuestToken } from '../storage/session';
 
-const API_BASE_URL = 'http://10.0.2.2:3000';
+const API_BASE_URL = Platform.select({
+  android: 'http://10.0.2.2:3000',
+  default: 'http://127.0.0.1:3000',
+});
 
 type ApiErrorPayload = { error?: { message?: string } };
 
@@ -94,6 +99,8 @@ export type MealInput = {
   proteinGrams?: number;
 };
 
+/** Local calendar date (YYYY-MM-DD); toISOString() would give the UTC date and be a day off near midnight. */
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }

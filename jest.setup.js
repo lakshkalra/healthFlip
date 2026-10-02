@@ -13,3 +13,5 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
     return Promise.resolve();
   }),
 }));
+
+jest.mock('react-native-safe-area-context', () => require('react-native-safe-area-context/jest/mock').default);

@@ -9,7 +9,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 | --- | --- | --- |
 | Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, Android emulator launch, and iOS simulator build/launch verified |
 | Phase 1 - Backend foundation | COMPLETE | Separate API repository, centralized table schemas, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
-| Phase 2 - Mobile core flows | IN PROGRESS | Functional flow specification documented; v0 flows manually verified against local PostgreSQL-backed API; Figma styling and final acceptance remain |
+| Phase 2 - Mobile core flows | IN PROGRESS | Claude design handoff implemented and verified on iOS; v0 flows manually verified against local PostgreSQL-backed API; restart persistence and deployed API verification remain |
 | Phase 3 - AI operations | NOT STARTED | - |
 | Phase 4 - UX polish and edge cases | NOT STARTED | - |
 | Phase 5 - Delivery and self-assessment | NOT STARTED | - |
@@ -80,8 +80,8 @@ Current iOS setup check on 2026-10-02:
 - `xcodebuild ... -destination 'id=49147A48-D7C2-43AE-947D-CAAF514768B5' build` passed.
 - The app installed and launched on the simulator; the captured screen showed the
   branded `Loading healthFlip...` screen.
-- Full iOS API-flow verification remains a Phase 2 item because the local API endpoint
-  currently uses the Android emulator host address.
+- Full iOS API-flow verification is now passing against the local API after the mobile
+  client was made platform-aware (`127.0.0.1` on iOS, `10.0.2.2` on Android).
 
 ## Phase 1 checklist
 
@@ -122,6 +122,7 @@ Current iOS setup check on 2026-10-02:
 - [x] Implement the v0 flows with reusable primitives and a small API client.
 - [x] Document the complete Phase 2 page-by-page functional flow.
 - [x] Run lint, Jest, TypeScript, Android build, and local emulator verification.
+- [x] Implement and verify the Claude design handoff on the iOS simulator.
 - [ ] Verify data survives a complete app restart.
 - [ ] Verify the mobile app against the deployed API endpoint.
 
@@ -140,18 +141,23 @@ Current iOS setup check on 2026-10-02:
 - Android debug build: passed with AsyncStorage native integration.
 - Android emulator manual check: passed; goal saved, dashboard loaded from local API,
   meal saved to PostgreSQL, dashboard updated to 380 / 2000 kcal, and meal detail opened.
-- Homepage design pass: implemented the provided visual direction with a light canvas,
-  lime progress hero, circular progress ring, date strip, soft meal card, and quieter
-  bottom navigation. Styling is now paused pending the user’s Figma design; the larger
-  Phase 4 polish pass remains required.
+- Claude design handoff: implemented reusable visual primitives, vector icons/progress
+  ring via `react-native-svg`, goal setup, dashboard, meal entry, detail, edit, delete,
+  loading, retry, and error states.
+- Root lint: passed after excluding the generated `design/` handoff export from the
+  application lint scope; the handoff remains untracked and is not part of the app build.
+- iOS build: passed with CocoaPods and `xcodebuild` on the iPhone 18 Pro simulator.
+- iOS runtime verification: passed; the app progressed from boot to the redesigned goal
+  setup screen, and the guest bootstrap request returned HTTP 200 from the local API.
+- iOS runtime fix: the API client now selects the correct local host per platform. The
+  previous iOS failure was caused by the Android-only `10.0.2.2` address.
 
 The authoritative functional flow is documented in
-`docs/phase-2-flow-spec.md`. Figma styling is a prerequisite for the next UI pass, but
-does not change the API behavior or page responsibilities defined there.
+`docs/phase-2-flow-spec.md`. The Claude design handoff is sufficient for v0 flow
+validation; the larger Phase 4 polish pass remains required.
 
-The Phase 2 prototype is intentionally design-only. No production mobile screens have
-been implemented yet. AI estimation, photo analysis, voice input, chat, and wellness
-insights remain Phase 3 scope.
+Production v0 mobile screens are now implemented. AI estimation, photo analysis, voice
+input, chat, and wellness insights remain Phase 3 scope.
 
 ## Product quality constraint
 
