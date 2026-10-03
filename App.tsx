@@ -103,6 +103,8 @@ function Root() {
   const [reminders, setReminders] = useState<ReminderSettings>(DEFAULT_REMINDERS);
   const [waterBusy, setWaterBusy] = useState(false);
   const [plansSignal, setPlansSignal] = useState(0);
+  // A question Flip should answer as soon as it opens (from "Ask Flip about this" on a report).
+  const [flipQuestion, setFlipQuestion] = useState<string | undefined>(undefined);
   const [historyVersion, setHistoryVersion] = useState(0);
   // Bumped when Flip saves a plan by voice so the Plans tab reloads.
   const [plansVersion, setPlansVersion] = useState(0);
@@ -328,9 +330,13 @@ function Root() {
   }
 
   const openFlip = (origin: RevealOrigin = { x: window.width / 2, y: window.height - 80 }) => setFlip({ instant: false, open: true, origin });
-  const closeFlip = () => setFlip(current => ({ ...current, instant: false, open: false }));
+  const closeFlip = () => {
+    setFlipQuestion(undefined);
+    setFlip(current => ({ ...current, instant: false, open: false }));
+  };
 
   function openTextFromFlip() {
+    setFlipQuestion(undefined);
     setFlip(current => ({ ...current, instant: true, open: false }));
     openAssistant();
   }
@@ -490,7 +496,7 @@ function Root() {
           key={reportsView.key}
           initialReportId={reportsView.reportId}
           onClose={() => setRoute(reportsView.returnTo)}
-          onAskFlip={() => openFlip()}
+          onAskFlip={question => { setFlipQuestion(question); openFlip(); }}
           onMakePlan={() => { setPlansSignal(current => current + 1); setRoute('plans'); }}
           onDeleted={() => loadDashboard(false)}
           onSaved={(_report, waterMl) => {
@@ -602,6 +608,7 @@ function Root() {
 
       <FlipReveal open={flip.open} instantClose={flip.instant} origin={flip.origin}>
         <VoiceConversationScreen
+          initialQuestion={flipQuestion}
           mealType={typeForHour()}
           remainingCalories={dashboard?.remainingCalories ?? null}
           userName={profile ? firstName(profile.name) : undefined}

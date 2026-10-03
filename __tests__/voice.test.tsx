@@ -302,6 +302,20 @@ describe('Flip voice agent', () => {
     expect(api.estimateMeal).toHaveBeenCalledWith('Poha and chai for breakfast', 'breakfast');
   });
 
+  test('a handed-over question (Ask Flip about this report) starts the session and is sent on its own', async () => {
+    const question = 'Can you explain my Lipid profile report? These were outside the lab range: LDL Cholesterol 162 mg/dL (high, lab range < 130).';
+    const { tree } = await render({ initialQuestion: question });
+    const socket = FakeSocket.instances[0];
+    expect(socket).toBeDefined();
+    await ReactTestRenderer.act(async () => { socket.onopen?.(); });
+    await serverSends(socket, { setupComplete: {} });
+    expect(sentMessages(socket)[1]).toEqual({ realtimeInput: { text: question } });
+    expect(textOf(tree)).toContain('Can you explain my Lipid profile report?');
+    // Sent once only, even if the screen re-renders.
+    await serverSends(socket, { serverContent: { turnComplete: true } });
+    expect(sentMessages(socket).filter(message => message.realtimeInput?.text === question)).toHaveLength(1);
+  });
+
   test('mute streams silence instead of mic audio so Gemini can still close the turn', async () => {
     const { socket, tree } = await renderAndConnect();
     await serverSends(socket, { setupComplete: {} });

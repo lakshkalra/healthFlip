@@ -18,7 +18,8 @@ type View_ =
 type Props = {
   /** Opens this report straight away (from the Home "Health" row). */
   initialReportId?: string | null;
-  onAskFlip: () => void;
+  /** Opens Flip and asks it straight away to explain this report. */
+  onAskFlip: (question: string) => void;
   onClose: () => void;
   onMakePlan: () => void;
   /** After saving: the new report and the water target the user accepted (ml), if any. */
@@ -109,7 +110,7 @@ export function ReportsScreen({ initialReportId, onAskFlip, onClose, onDeleted, 
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 28 }]}>
           <ReportBody report={view.report} />
           <PillButton title="Make a meal plan from this" icon="utensils" height={50} onPress={onMakePlan} />
-          <PillButton title="Ask Flip about this" icon="mic" variant="dark" height={50} onPress={onAskFlip} />
+          <PillButton title="Ask Flip about this" icon="mic" variant="dark" height={50} onPress={() => onAskFlip(reportQuestion(view.report))} />
           <Pressable
             accessibilityRole="button"
             onPress={() => Alert.alert('Delete this report?', 'Flip will stop using it to personalise your meals.', [
@@ -301,6 +302,21 @@ function InfoRow({ icon, text }: { icon: IconName; text: string }) {
       <Text style={[styles.body, styles.grow]}>{text}</Text>
     </View>
   );
+}
+
+/**
+ * What Flip is asked when you tap "Ask Flip about this". It carries the flagged values itself, so
+ * Flip can explain this report even if it isn't the latest one.
+ */
+export function reportQuestion(report: Pick<HealthReport, 'reportDate' | 'title' | 'values'>): string {
+  const flagged = report.values
+    .filter(value => value.flag === 'low' || value.flag === 'high' || value.flag === 'critical')
+    .slice(0, 6)
+    .map(value => `${value.name} ${value.value}${value.unit ? ` ${value.unit}` : ''} (${value.flag}${value.referenceRange ? `, lab range ${value.referenceRange}` : ''})`);
+  const when = report.reportDate ? ` from ${formatDate(report.reportDate)}` : '';
+  return flagged.length
+    ? `Can you explain my ${report.title} report${when}? These were outside the lab range: ${flagged.join('; ')}. What do they mean, and what should I change in my meals?`
+    : `Can you explain my ${report.title} report${when}? Everything was within the lab range. Anything I should keep doing with my meals?`;
 }
 
 function formatDate(value: string): string {

@@ -47,6 +47,8 @@ type Entry =
 type Turn = { flip: string; flipId: string | null; user: string; userId: string | null };
 
 type VoiceScreenProps = {
+  /** Sent to Flip as soon as the session is ready (e.g. "explain my report"), so the user doesn't have to ask. */
+  initialQuestion?: string;
   mealType: MealType;
   onClose: () => void;
   onMealLogged: () => void;
@@ -79,7 +81,7 @@ const THINKING_TIMEOUT_MS = 6000;
 const MEMORY_CATEGORIES: readonly MemoryCategory[] = ['diet', 'allergy', 'preference', 'routine', 'goal', 'other'];
 const emptyTurn = (): Turn => ({ flip: '', flipId: null, user: '', userId: null });
 
-export function VoiceConversationScreen({ mealType, onClose, onMealLogged, onOpenText, onPlanSaved, remainingCalories = null, userName }: VoiceScreenProps) {
+export function VoiceConversationScreen({ initialQuestion, mealType, onClose, onMealLogged, onOpenText, onPlanSaved, remainingCalories = null, userName }: VoiceScreenProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const socketRef = useRef<WebSocket | null>(null);
@@ -466,6 +468,14 @@ export function VoiceConversationScreen({ mealType, onClose, onMealLogged, onOpe
     if (liveRef.current) sendText(text);
     else startSession(text).catch(() => undefined);
   }, [sendText, startSession]);
+
+  // A handed-over question starts the session and is sent once Gemini is ready.
+  const askedRef = useRef(false);
+  useEffect(() => {
+    if (!initialQuestion || askedRef.current) return;
+    askedRef.current = true;
+    startSession(initialQuestion).catch(() => undefined);
+  }, [initialQuestion, startSession]);
 
   useEffect(() => {
     onAudioChunk(buffer => {
