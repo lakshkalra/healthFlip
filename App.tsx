@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActionSheetIOS, Alert, Linking, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions, type ScrollViewInstance } from 'react-native';
+import { ActionSheetIOS, Alert, AppState, Linking, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions, type ScrollViewInstance } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createMeal, deleteMeal, getCurrentGoal, getDailyInsight, getDashboard, getProfile, listFoods, logWater, resetGuest, saveGoal, setWaterTarget, undoWater, updateMeal, type DailyInsight, type MealInput } from './src/api/client';
@@ -16,7 +16,7 @@ import { PlansScreen } from './src/plans';
 import { applyWaterReminders, clearAllReminders, DEFAULT_REMINDERS, loadReminderSettings, nextReminder, saveReminderSettings, type ReminderSettings } from './src/reminders';
 import { ReportsScreen } from './src/reports';
 import { TipsScreen } from './src/tips';
-import { syncWidget } from './src/widget';
+import { clearWidget, syncWidget } from './src/widget';
 import { notificationStatus, takeLaunchURL, updateWidget } from './src/native';
 import {
   FOODS,
@@ -182,9 +182,34 @@ function Root() {
   }, [loadInsight]);
 
   // The Home Screen widget mirrors today's numbers whenever they change.
-  useEffect(() => {
+  const pushWidget = useCallback(() => {
     syncWidget(dashboard, dashboard?.goal?.dailyCalorieTarget ?? target, insight?.message ?? null, dashboard?.water?.targetMl ? nextReminder(reminders) : null);
   }, [dashboard, insight, reminders, target]);
+  useEffect(pushWidget, [pushWidget]);
+  useEffect(() => {
+    if (route === 'onboarding' && !dashboard?.goal) clearWidget();
+  }, [dashboard?.goal, route]);
+
+  // Coming back to the app refreshes today (it may be a new day, or minutes later), and leaving it
+  // pushes one last widget update so the Home Screen shows the latest numbers.
+  const lastLoaded = useRef(0);
+  useEffect(() => {
+    if (dashboard) lastLoaded.current = Date.now();
+  }, [dashboard]);
+  const onAppState = useRef<(state: string) => void>(() => undefined);
+  onAppState.current = state => {
+    if (state === 'background') pushWidget();
+    if (state !== 'active' || !dashboard || !activeTab) return;
+    if (dashboard.date !== dateKey() || Date.now() - lastLoaded.current > 60_000) {
+      setViewing(null);
+      loadDashboard(false);
+      if (dashboard.date !== dateKey()) loadInsight();
+    }
+  };
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => onAppState.current(state));
+    return () => subscription.remove();
+  }, []);
 
   // Widget taps open the app with healthflip://log-meal, ://water or ://reports.
   const pendingLink = useRef<string | null>(null);

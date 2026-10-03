@@ -40,3 +40,9 @@ export function syncWidget(dashboard: Dashboard | null, target: number, nudge: s
   if (!dashboard) return;
   updateWidget(widgetSnapshot(dashboard, target, nudge, nextReminder)).catch(() => undefined);
 }
+
+/** No account data yet (onboarding, or after a reset): the widget asks you to open the app instead
+ * of showing numbers from an earlier account or server. */
+export function clearWidget(): void {
+  updateWidget(null).catch(() => undefined);
+}

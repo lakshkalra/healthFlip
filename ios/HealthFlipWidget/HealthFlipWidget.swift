@@ -6,6 +6,7 @@ import WidgetKit
 
 private let appGroup = "group.org.reactjs.native.example.healthFlip"
 private let snapshotKey = "widgetSnapshot"
+private let snapshotFile = "widget-snapshot.json"
 
 struct Snapshot: Decodable {
   struct Water: Decodable { let consumedMl: Int; let targetMl: Int }
@@ -34,8 +35,13 @@ struct Snapshot: Decodable {
     return formatter.string(from: date)
   }
 
+  /// Reads the file the app writes on every change (no cross-process caching), falling back to
+  /// the older UserDefaults copy for snapshots written before the file existed.
   static func load() -> Snapshot? {
-    guard let json = UserDefaults(suiteName: appGroup)?.string(forKey: snapshotKey), let data = json.data(using: .utf8) else { return nil }
+    let file = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?.appendingPathComponent(snapshotFile)
+    let data = file.flatMap { try? Data(contentsOf: $0) }
+      ?? UserDefaults(suiteName: appGroup)?.string(forKey: snapshotKey)?.data(using: .utf8)
+    guard let data else { return nil }
     return try? JSONDecoder().decode(Snapshot.self, from: data)
   }
 
@@ -187,7 +193,7 @@ struct EmptyState: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       Label("healthFlip", systemImage: "leaf.fill").font(.system(size: 15, weight: .heavy)).foregroundStyle(.primary)
-      Text("Open the app to see today’s meals here.").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+      Text("Open healthFlip to finish setting up and see today’s meals here.").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
     }
   }
 }

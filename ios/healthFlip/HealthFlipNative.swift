@@ -9,6 +9,7 @@ import WidgetKit
 final class HealthFlipNative: NSObject {
   static let appGroup = "group.org.reactjs.native.example.healthFlip"
   static let snapshotKey = "widgetSnapshot"
+  static let snapshotFile = "widget-snapshot.json"
 
   /// Set by SceneDelegate when a widget (or any healthflip:// link) cold-starts the app.
   static var launchURL: URL?
@@ -83,14 +84,24 @@ final class HealthFlipNative: NSObject {
   }
 
   /// Stores today's numbers for the widget in the shared App Group and asks WidgetKit to redraw.
+  /// A file is the source of truth: UserDefaults is cached per process, so a long-lived widget
+  /// extension could otherwise keep reading an older snapshot.
   @objc(updateWidget:resolver:rejecter:)
   func updateWidget(_ json: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
-    guard let defaults = UserDefaults(suiteName: Self.appGroup) else {
+    guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroup) else {
       reject("WIDGET_UNAVAILABLE", "The shared App Group is not configured.", nil)
       return
     }
-    defaults.set(json, forKey: Self.snapshotKey)
-    WidgetCenter.shared.reloadAllTimelines()
+    do {
+      try Data(json.utf8).write(to: container.appendingPathComponent(Self.snapshotFile), options: .atomic)
+    } catch {
+      reject("WIDGET_WRITE_FAILED", "Couldn't save the widget data.", error)
+      return
+    }
+    UserDefaults(suiteName: Self.appGroup)?.set(json, forKey: Self.snapshotKey)
+    DispatchQueue.main.async {
+      WidgetCenter.shared.reloadAllTimelines()
+    }
     resolve(nil)
   }
 
