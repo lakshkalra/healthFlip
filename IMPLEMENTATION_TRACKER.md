@@ -10,7 +10,7 @@ No phase advances until its acceptance criteria are verified and recorded here.
 | Phase 0 - Environment and project foundation | COMPLETE | React Native scaffold, local API/PostgreSQL, Android emulator launch, and iOS simulator build/launch verified |
 | Phase 1 - Backend foundation | COMPLETE | Separate API repository, centralized table schemas, reusable API modules, migrations, local integration tests, and Vercel preparation verified |
 | Phase 2 - Mobile core flows | COMPLETE | v0 mobile flows, restart persistence, hosted API CRUD, and fresh Android hosted-API launch verified |
-| Phase 3 - AI operations | IN PROGRESS | Fallback AI API and mobile text/insight integration verified; live Gemini, voice, and image work remain |
+| Phase 3 - AI operations | IN PROGRESS | Fallback text/image API and mobile text/insight/voice/image integration implemented; live Gemini and physical-device media verification remain |
 | Phase 4 - UX polish and edge cases | NOT STARTED | - |
 | Phase 5 - Delivery and self-assessment | NOT STARTED | - |
 
@@ -256,6 +256,157 @@ input, chat, and wellness insights remain Phase 3 scope.
   manifest permission.
 - Image API smoke test: passed; `POST /v1/ai/meal-estimate-image` returned HTTP 200 with
   a structured fallback estimate.
+- AI interaction structure revision: moved text, voice, and image estimation out of the Log
+  meal sheet into a reusable floating `Ask Kimbo` assistant. The Log meal sheet is now reserved
+  for curated pre-selected foods and manual review/save. The assistant can log an accepted estimate
+  directly with its source metadata and refresh the dashboard.
+
+### Physical iPhone setup checkpoint (2026-10-02)
+
+- Connected iPhone 15 Pro detected; a valid Apple Development signing identity is available.
+- CocoaPods refresh and workspace/scheme inspection passed using
+  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` without changing the
+  system-wide developer directory.
+- Fixed Xcode's `ENABLE_USER_SCRIPT_SANDBOXING` setting for Debug and Release.
+  The previous device build could not write React Native's `ip.txt` file.
+- Fixed the development API host: iOS follows Metro's Mac hostname, while Android
+  retains `10.0.2.2`. Added a local-network permission explanation.
+- Restarted the local API with `HOST=0.0.0.0 npm start`; API health and Metro status
+  passed through the Mac's Wi-Fi address. Keep both servers running and the phone
+  on the same network for development testing.
+- `npm run lint`, `npx tsc --noEmit`, and
+  `npm test -- --runInBand --watchman=false` passed (6 tests). Watchman was disabled
+  only for the test command because the execution sandbox denied its socket.
+- Native compilation and JavaScript bundling progressed past the original error.
+  Device signing failed on `React.framework` with `errSecInternalComponent`; Mac
+  keychain authorization is the remaining gate. A signed rebuild is being retried.
+- Signed physical-device build passed and the app installed on the connected iPhone 15 Pro.
+- iOS trust approval, signed installation, and launch on the physical iPhone 15 Pro passed.
+- The physical device reached the local API over Wi-Fi (`192.168.0.3` → `192.168.0.5:3000`)
+  and received successful goal/dashboard responses after the development-host fallback fix.
+- Recovered the local PostgreSQL dependency after Docker Desktop was restarted; the API
+  database health probe, guest bootstrap, dashboard, and image-estimate smoke checks returned
+  successfully, and the installed iPhone build loaded the dashboard again.
+- iPhone Mirroring is not a valid camera/microphone test surface: Apple does not pass those
+  inputs through mirroring, so its `Recognition request was canceled` result is expected there.
+  Direct interaction on the physical iPhone remains required for camera and speech verification.
+- Earlier after the Xcode update, a fresh physical-device rebuild was blocked because the
+  local `iOS Development` signing certificate/private key was unavailable to Xcode; this was
+  resolved by restoring the Apple account in Xcode.
+- Latest assistant-flow build: Apple account signing was restored, the signed app was installed
+  and relaunched on the iPhone 15 Pro, and device logs showed successful goal, dashboard, and
+  Kimbo insight API responses. Mirroring disconnected because the phone was actively in use.
+- Fixed the Kimbo bottom-sheet render crash observed on the iPhone: the native speech adapter's
+  `destroy()` can return synchronously, so cleanup now safely handles both sync and Promise results.
+  The voice listener lifecycle now remains stable while partial transcripts update, and cleanup
+  safely handles both sync and Promise results. Rebuilt, reinstalled, and relaunched the signed
+  physical-device app; lint, TypeScript, and all 6 Jest tests pass.
+- Re-ran `pod install` after the Xcode update so `ios/healthFlip.xcworkspace` includes the full
+  native dependency graph. The workspace lists the `healthFlip` scheme and the generic signed
+  iOS build now passes successfully.
+- Replaced the Kimbo bottom sheet with a dedicated full-screen assistant route. The composer is
+  keyboard-aware, the message list auto-scrolls, media actions are disabled while busy, and API
+  failures are shown in the conversation instead of being swallowed.
+- Added AI guardrails for prompt-injection/medical requests, image-size limits, invalid provider
+  output, and persisted daily-insight output. The isolated backend integration suite now passes
+  9/9, including safety rejection cases.
+- Added the backend-only Gemini provider adapter for structured text estimates, image estimates,
+  and daily insights. The provider is selected only when `GEMINI_API_KEY` exists; otherwise the
+  deterministic fallback remains active. The current local environment has no Gemini key, so live
+  provider verification is still pending.
+- Added explicit `AI_PROVIDER=auto|fallback|gemini` selection and `GET /health/ai`, which reports
+  the active provider without exposing secrets. Decimal macro values from Gemini are now accepted
+  by the output validator. Backend integration suite passes 10/10.
+- Live Gemini verification (2026-10-03): PostgreSQL, API health, and `/health/ai` passed with
+  `{ provider: "gemini", live: true }`. A real text request returned `source: "ai"`, a specific
+  meal name, 540 kcal, medium confidence, and portion assumptions. A synthetic image request
+  returned `source: "ai"` and correctly reported an unrecognized blank image instead of the old
+  350 kcal fallback. A persisted-goal daily insight returned `source: "ai"`. Guardrail smoke tests
+  returned 422 `AI_SAFETY_BLOCKED` and 413 `AI_IMAGE_TOO_LARGE`.
+- Updated the Gemini model from `gemini-2.5-flash` after Google rejected it for new users; the
+  current configured model is `gemini-3.8-flash`.
+- iPhone reload is pending one manual unlock: CoreDevice sees the paired iPhone 15 Pro, but iOS
+  denied launch while the device was locked.
+- Photo fallback behavior is now explicit in the mobile estimate card: assumptions are shown,
+  and the local provider states that it cannot identify ingredients until the live vision provider
+  is configured.
+- Current device check: the signed generic iOS build passes, but CoreDevice currently reports the
+  iPhone as unavailable because iPhone Mirroring says “iPhone in Use.” The rebuilt app could not
+  be reinstalled in this pass until the phone is locked and reconnects. Direct physical voice and
+  camera verification therefore remains an explicit pending item.
+- Device update completed after the iPhone reconnected: the signed `healthFlip.app` installed
+  successfully on iPhone 15 Pro (`00008130-000E1D8201D8001C`) and relaunched successfully with
+  bundle ID `org.reactjs.native.example.healthFlip`.
+- Camera/speech verification remain pending. This checkpoint does not mark Phase 3 complete.
+
+### Phase 3 live voice protocol evidence (2026-10-03)
+
+Backend (`healthflip-api`):
+
+- Restarted the API after the `liveConnectConstraints` → `bidiGenerateContentSetup` patch. The
+  first live-session call after the restart still returned 503. A sanitized direct probe showed the
+  token endpoint now accepts the payload, but returns only `name` (no `expireTime`). The provider
+  required `expireTime` and treated the success as a failure. Fixed
+  `src/shared/ai/live-session-provider.ts` to use the expiry it requested (15 minutes).
+- Smoke test (token never printed): `/health/db` 200, `/health/ai` `{ provider: "gemini", live: true }`,
+  guest 200, `POST /v1/ai/live-session` 200 in ~560 ms with `hasToken: true`,
+  `model: gemini-3.8-live`, `expiresAt` set, `BidiGenerateContentConstrained` URL.
+- Added `tests/live-session-provider.test.ts` (payload field, name-only response, rejected request).
+  `npm run typecheck` passed; integration 12/12 and provider 2/2 passed.
+
+Gemini Live protocol, verified from Node against the real constrained WebSocket using backend-issued
+tokens:
+
+- The setup the app previously sent (`responseModalities` at the top level of `setup`) is rejected with
+  close `1007 Unknown name "responseModalities" at 'setup'`. A setup with only `{ model }` works,
+  because the token locks the config, voice, transcription and system instruction.
+- Every server message arrives as a **binary** frame containing UTF-8 JSON, including `setupComplete`.
+  The previous string-only handler would have dropped them all.
+- Synthesized speech (macOS `say`, 16 kHz PCM16, 100 ms chunks, then silence) produced an exact input
+  transcript, a 24 kHz PCM audio reply, and an output transcript that follows the Kimbo system
+  instruction. Setup took ~1.4 s; the first reply audio arrived ~1.2 s after speech ended
+  (VAD silence included). The input transcript arrives before `turnComplete`.
+
+Mobile (`src/voice.tsx`, new `src/voiceProtocol.ts`):
+
+- `onopen` sends only the minimal setup. The native audio session, the 24 kHz player and the 16 kHz
+  recorder start only after `setupComplete`; mic chunks are not sent before that.
+- `binaryType = 'arraybuffer'` plus a UTF-8 decode (`TextDecoder` with a Devanagari-safe fallback).
+- A close or error before setup now shows an error state with the close reason, instead of staying on
+  "Connecting" forever. An attempt counter discards stale async work after End, Back or unmount.
+- Input and output transcription fragments are accumulated per turn. The meal estimate uses the full
+  user utterance. Review-card messages always append a new bubble rather than overwriting
+  Kimbo's speech.
+- State updates are guarded (no re-render per audio chunk). The mic level drives a Reanimated shared
+  value directly, removing the 20-per-second whole-screen re-renders. `goAway` shows a time-limit
+  message and ends the session cleanly (no auto-reconnect, because tokens are single-use).
+- Fixed the Jest Reanimated mock so `useSharedValue` is stable across renders, as it is in the real
+  library.
+- Added `__tests__/voice.test.tsx` (8 tests):
+  - setup sent first, and audio held until `setupComplete`;
+  - string, ArrayBuffer and typed-array parsing, and malformed JSON ignored;
+  - UTF-8 fallback;
+  - fragment accumulation, and logging only after **Confirm and log**;
+  - End with a pending estimate does not log;
+  - close before setup gives an error state;
+  - mic denial is recoverable.
+- `npx tsc --noEmit`, `npm run lint` and `npm test -- --runInBand --watchman=false` passed: 2 suites,
+  14 tests.
+
+Physical iPhone (iPhone 15 Pro, `00008130-000E1D8201D8001C`):
+
+- The installed build predated the Reanimated, Worklets and Nitro native packages. Opening Talk live
+  therefore failed with "cannot read properties of undefined (VoiceConversationScreen)", because a
+  Metro reload cannot add native code.
+- Rebuilt with `xcodebuild` (Debug, signed, `-allowProvisioningUpdates`) and reinstalled with
+  `xcrun devicectl device install app`. The new binary contains the NitroModules, RealtimeAudio,
+  Reanimated and Worklets symbols.
+- Result: a live voice conversation with Kimbo works on the device. This is accepted as **v0**: voice
+  quality and conversational realism need a dedicated improvement pass.
+- The local API must listen on all interfaces for the phone to reach it. `.env` now uses
+  `HOST=0.0.0.0` (local only, not committed).
+- Image meal estimation is still **not working** on the device (HEIC and the photo path, handoff
+  item D).
 
 ### Phase 3 remaining checklist
 
@@ -266,6 +417,11 @@ input, chat, and wellness insights remain Phase 3 scope.
 - [x] Add image input with deterministic unavailable-provider behavior.
 - [ ] Add AI-specific mobile interaction tests for estimate success and failure.
 - [ ] Add and verify the live Gemini image provider adapter (requires Gemini API key).
+- [x] Live voice: ephemeral token provisioning verified against Gemini (2026-10-03).
+- [x] Live voice: mobile setup ordering, binary frames and transcript handling fixed, with tests.
+- [x] Live voice: physical iPhone conversation working (v0, 2026-10-03).
+- [ ] Live voice: improve voice quality and realism; verify Hinglish, interruption, meal confirm/cancel, background and error cases.
+- [ ] Image: HEIC handling on iPhone, plus camera/library verification.
 - [ ] Complete end-to-end Phase 3 manual verification and mark the phase `COMPLETE`.
 
 The authoritative Phase 3 contract is documented in
