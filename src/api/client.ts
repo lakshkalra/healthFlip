@@ -1,8 +1,13 @@
+import { NativeModules, Platform } from 'react-native';
 import type { Dashboard, Goal, GoalType, Meal, MealType } from '../types';
 import { dateKey } from '../meals';
 import { getGuestToken, saveGuestToken } from '../storage/session';
 
-const API_BASE_URL = __DEV__ ? 'http://10.0.2.2:3000' : 'https://healthflip-api.vercel.app';
+// A bundled Debug build has a file:// script URL, so it cannot discover Metro's
+// host at runtime. Keep the local iPhone fallback on the Mac's current Wi-Fi IP.
+const metroHost = NativeModules.SourceCode?.getConstants?.().scriptURL?.match(/^https?:\/\/([^/:]+)/)?.[1];
+const developmentHost = Platform.OS === 'android' ? '10.0.2.2' : metroHost ?? '192.168.0.5';
+const API_BASE_URL = __DEV__ ? `http://${developmentHost}:3000` : 'https://healthflip-api.vercel.app';
 
 type ApiErrorPayload = { error?: { message?: string } };
 
@@ -66,7 +71,7 @@ export async function getDashboard(date = dateKey()): Promise<Dashboard> {
 export async function createMeal(input: MealInput): Promise<Meal> {
   await ensureGuest();
   const response = await request<{ meal: Meal }>('/v1/meals', {
-    body: JSON.stringify({ ...input, loggedAt: new Date().toISOString(), source: 'manual' }),
+    body: JSON.stringify({ ...input, loggedAt: new Date().toISOString(), source: input.source ?? 'manual' }),
     method: 'POST',
   });
   return response.meal;
@@ -104,6 +109,13 @@ export type DailyInsight = {
   source: 'ai' | 'fallback';
 };
 
+export type LiveSession = {
+  expiresAt: string;
+  model: string;
+  token: string;
+  websocketUrl: string;
+};
+
 export async function estimateMeal(description: string, mealType: MealType): Promise<AiMealEstimate> {
   await ensureGuest();
   const response = await request<{ estimate: AiMealEstimate }>('/v1/ai/meal-estimate', {
@@ -131,6 +143,16 @@ export async function getDailyInsight(date = dateKey()): Promise<DailyInsight> {
   return response.insight;
 }
 
+export async function createLiveSession(date = dateKey()): Promise<LiveSession> {
+  await ensureGuest();
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const response = await request<{ session: LiveSession }>('/v1/ai/live-session', {
+    body: JSON.stringify({ date, timezone }),
+    method: 'POST',
+  });
+  return response.session;
+}
+
 export type MealInput = {
   caloriesKcal: number;
   carbsGrams?: number;
@@ -139,4 +161,5 @@ export type MealInput = {
   name: string;
   note?: string;
   proteinGrams?: number;
+  source?: 'manual' | 'photo' | 'voice';
 };

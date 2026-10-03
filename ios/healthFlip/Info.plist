@@ -26,6 +26,25 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>healthFlip uses the camera only when you choose to capture a meal photo.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>healthFlip uses the microphone only when you choose voice meal input.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>healthFlip connects to your Mac's development server while testing the app locally.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>healthFlip uses your photo library only when you choose a meal photo.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>healthFlip uses speech recognition only to turn your meal description into text.</string>
+	<key>RCTNewArchEnabled</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -43,25 +62,6 @@
 			</array>
 		</dict>
 	</dict>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<false/>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
-	<key>NSCameraUsageDescription</key>
-	<string>healthFlip uses the camera only when you choose to capture a meal photo.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>healthFlip uses the microphone only when you choose voice meal input.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>healthFlip uses your photo library only when you choose a meal photo.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>healthFlip uses speech recognition only to turn your meal description into text.</string>
-	<key>RCTNewArchEnabled</key>
-	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

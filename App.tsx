@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { createMeal, deleteMeal, estimateMeal, estimateMealFromImage, getCurrentGoal, getDailyInsight, getDashboard, saveGoal, updateMeal, type DailyInsight, type MealInput } from './src/api/client';
-import { chooseMealImage, VoiceCaptureButton, type MealImage } from './src/media';
+import { createMeal, deleteMeal, getCurrentGoal, getDailyInsight, getDashboard, saveGoal, updateMeal, type DailyInsight, type MealInput } from './src/api/client';
+import { AssistantFab, AssistantScreen } from './src/assistant';
+import { VoiceConversationScreen } from './src/voice';
 import { ProgressScreen } from './src/progress';
 import { RewardsScreen } from './src/rewards';
 import { TipsScreen } from './src/tips';
@@ -47,7 +48,7 @@ import {
 } from './src/ui';
 
 type Tab = 'home' | 'progress' | 'rewards' | 'tips';
-type Route = 'boot' | 'goal' | 'detail' | Tab;
+type Route = 'assistant' | 'voice' | 'boot' | 'goal' | 'detail' | Tab;
 type BootState = 'loading' | 'first' | 'returning' | 'error';
 type DashState = 'loading' | 'ready' | 'refreshing' | 'fail' | 'error';
 type MealTypes = Record<string, MealType>;
@@ -75,6 +76,7 @@ function Root() {
   const [mealTypes, setMealTypes] = useState<MealTypes>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<{ open: boolean; mode: 'add' | 'edit'; type: MealType; key: number }>({ open: false, mode: 'add', type: 'breakfast', key: 0 });
+  const [assistantReturnRoute, setAssistantReturnRoute] = useState<Tab>('home');
   const [deleteDialog, setDeleteDialog] = useState({ open: false, key: 0 });
   const [toast, setToast] = useState('');
   const [viewing, setViewing] = useState<Dashboard | null>(null);
@@ -178,6 +180,14 @@ function Root() {
     bumpHistory();
   }
 
+  function handleAssistantMealLogged() {
+    setRoute(assistantReturnRoute);
+    flash('Kimbo added the meal to your day');
+    loadDashboard(false);
+    loadInsight();
+    bumpHistory();
+  }
+
   async function handleDelete() {
     if (!selected) return;
     await deleteMeal(selected.id);
@@ -189,6 +199,11 @@ function Root() {
   }
 
   const openAdd = (type: MealType = typeForHour()) => setSheet({ open: true, mode: 'add', type, key: Date.now() });
+
+  function openAssistant() {
+    setAssistantReturnRoute(activeTab ?? 'home');
+    setRoute('assistant');
+  }
 
   // Bottom-nav press: switch tabs, and a second press on the active tab pops its sub-screen.
   const openTab = (tab: Tab) => {
@@ -259,8 +274,11 @@ function Root() {
             <TipsScreen popSignal={tipsPop} />
           </View>
           <BottomNav activeTab={activeTab} onNavigate={openTab} onAdd={() => openAdd()} />
+          <AssistantFab bottom={Math.max(insets.bottom, 12) + 78} onPress={openAssistant} />
         </>
       ) : null}
+      {route === 'assistant' ? <AssistantScreen mealType={typeForHour()} onClose={() => setRoute(assistantReturnRoute)} onMealLogged={handleAssistantMealLogged} onOpenLiveVoice={() => setRoute('voice')} /> : null}
+      {route === 'voice' ? <VoiceConversationScreen mealType={typeForHour()} onClose={() => setRoute('assistant')} onMealLogged={handleAssistantMealLogged} /> : null}
       {route === 'detail' && selected ? (
         <MealDetail
           meal={selected}
@@ -707,9 +725,9 @@ type FormErrors = Partial<Record<'name' | 'cal' | 'p' | 'c' | 'f', string>>;
 
 const toText = (value: number | null) => (value === null ? '' : String(value));
 
-function validate(form: MealForm): FormErrors {
+function validate(form: MealForm, requirePreset: boolean): FormErrors {
   const errors: FormErrors = {};
-  if (!form.name.trim()) errors.name = 'Choose a food from the list.';
+  if (!form.name.trim() || (requirePreset && !FOODS.some(food => food.name === form.name))) errors.name = 'Choose a food from the list.';
   if (!form.cal.trim()) errors.cal = 'Add calories, even a rough guess.';
   else if (!isWholeNumber(form.cal)) errors.cal = 'Use a whole number, 0 or more.';
   (['p', 'c', 'f'] as const).forEach(key => {
@@ -727,11 +745,6 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
   );
   const [errors, setErrors] = useState<FormErrors>({});
   const [status, setStatus] = useState<'idle' | 'saving' | 'fail'>('idle');
-  const [aiDescription, setAiDescription] = useState('');
-  const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'fail'>('idle');
-  const [aiEstimate, setAiEstimate] = useState<{ assumptions: string[]; source: 'ai' | 'fallback' } | null>(null);
-  const [image, setImage] = useState<MealImage | null>(null);
-  const [imageStatus, setImageStatus] = useState<'idle' | 'loading' | 'fail'>('idle');
   const saving = status === 'saving';
 
   const update = (patch: Partial<MealForm>) => {
@@ -745,7 +758,7 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
 
   async function submit() {
     if (saving) return;
-    const nextErrors = validate(form);
+    const nextErrors = validate(form, mode === 'add');
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     const input: MealInput = { caloriesKcal: Number(form.cal), mealType: form.type, name: form.name.trim() };
@@ -760,38 +773,6 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
       onSaved({}, mode);
     } catch {
       setStatus('fail');
-    }
-  }
-
-  async function handleEstimate() {
-    if (!aiDescription.trim() || aiStatus === 'loading') return;
-    setAiStatus('loading');
-    try {
-      const estimate = await estimateMeal(aiDescription.trim(), form.type);
-      update({ name: estimate.name, cal: String(estimate.caloriesKcal), p: toText(estimate.proteinGrams), c: toText(estimate.carbsGrams), f: toText(estimate.fatGrams) });
-      setAiEstimate({ assumptions: estimate.assumptions, source: estimate.source });
-      setAiStatus('idle');
-    } catch {
-      setAiStatus('fail');
-    }
-  }
-
-  async function handleImage(source: 'camera' | 'library') {
-    if (imageStatus === 'loading') return;
-    setImageStatus('loading');
-    try {
-      const selected = await chooseMealImage(source);
-      if (!selected) {
-        setImageStatus('idle');
-        return;
-      }
-      setImage(selected);
-      const estimate = await estimateMealFromImage(selected.base64, selected.mimeType, form.type);
-      update({ name: estimate.name, cal: String(estimate.caloriesKcal), p: toText(estimate.proteinGrams), c: toText(estimate.carbsGrams), f: toText(estimate.fatGrams) });
-      setAiEstimate({ assumptions: estimate.assumptions, source: estimate.source });
-      setImageStatus('idle');
-    } catch {
-      setImageStatus('fail');
     }
   }
 
@@ -820,37 +801,6 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
           <FoodPicker value={form.name} error={!!errors.name} onPick={food => update({ name: food.name, cal: String(food.cal), p: String(food.p), c: String(food.c), f: String(food.f) })} />
           <FieldError message={errors.name} />
         </View>
-        {mode === 'add' ? (
-          <Card style={screen.aiCard}>
-            <View style={screen.rowCenter10}>
-              <IconTile name="leaf" bg={colors.limeBright} fg={colors.greenDark} size={38} radius={13} iconSize={19} />
-              <View style={screen.grow}>
-                <Text style={screen.label14}>Estimate with AI</Text>
-                <Text style={screen.hint}>Describe the meal and review the rough estimate.</Text>
-              </View>
-            </View>
-            <InputShell>
-              <TextInput accessibilityLabel="AI meal description" value={aiDescription} onChangeText={setAiDescription} placeholder="e.g. 2 eggs with toast" placeholderTextColor={colors.faint} style={screen.aiInput} />
-            </InputShell>
-            <View style={screen.mediaRow}>
-              <VoiceCaptureButton onText={setAiDescription} style={screen.mediaGrow} />
-              <Pressable accessibilityLabel="Choose meal photo" accessibilityRole="button" disabled={imageStatus === 'loading'} onPress={() => handleImage('library')} style={({ pressed }) => [screen.mediaButton, pressed && screen.mediaButtonPressed]}>
-                <Icon name="image" color={colors.greenDark} size={18} />
-                <Text style={screen.mediaButtonText}>Photo</Text>
-              </Pressable>
-              <Pressable accessibilityLabel="Take meal photo" accessibilityRole="button" disabled={imageStatus === 'loading'} onPress={() => handleImage('camera')} style={({ pressed }) => [screen.mediaButton, pressed && screen.mediaButtonPressed]}>
-                <Icon name="camera" color={colors.greenDark} size={18} />
-                <Text style={screen.mediaButtonText}>Camera</Text>
-              </Pressable>
-            </View>
-            {image ? <View style={screen.imagePreviewRow}><Image accessibilityLabel="Selected meal photo" source={{ uri: image.uri }} style={screen.imagePreview} /><Text style={screen.aiNote}>Photo selected. Review the rough wellness estimate before saving.</Text></View> : null}
-            <PillButton title="Estimate with AI" icon="leaf" variant="light" height={46} busy={aiStatus === 'loading'} busyLabel="Estimating…" onPress={handleEstimate} />
-            {aiEstimate ? <Text style={screen.aiNote}>{aiEstimate.assumptions.join(' ')}</Text> : null}
-            {aiStatus === 'fail' ? <Banner message="AI estimate unavailable. You can still enter the meal manually." /> : null}
-            {imageStatus === 'loading' ? <Text style={screen.aiNote}>Preparing your photo…</Text> : null}
-            {imageStatus === 'fail' ? <Banner message="Photo analysis unavailable. You can still describe the meal or enter it manually." /> : null}
-          </Card>
-        ) : null}
         <View style={screen.gap6}>
           <Text style={screen.label14}>Which meal?</Text>
           <View style={screen.row6}>
@@ -1107,16 +1057,6 @@ const screen = StyleSheet.create({
   sheetFooter: { borderTopColor: colors.chip, borderTopWidth: 1, gap: 10, paddingHorizontal: 20, paddingTop: 10 },
   foodShell: { gap: 10, paddingRight: 14 },
   foodInput: { color: colors.ink, flex: 1, fontSize: 16, fontWeight: '600', minWidth: 0, padding: 0 },
-  aiCard: { backgroundColor: colors.pale, gap: 10, padding: 14 },
-  aiInput: { color: colors.ink, flex: 1, fontSize: 15, minWidth: 0, padding: 0 },
-  aiNote: { color: colors.muted, fontSize: 12, lineHeight: 17 },
-  mediaRow: { flexDirection: 'row', gap: 8 },
-  mediaGrow: { flex: 1 },
-  mediaButton: { alignItems: 'center', backgroundColor: colors.white, borderRadius: 14, flexDirection: 'row', gap: 6, minHeight: 46, paddingHorizontal: 12 },
-  mediaButtonPressed: { backgroundColor: colors.selected },
-  mediaButtonText: { color: colors.greenDark, fontSize: 13, fontWeight: '800' },
-  imagePreviewRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  imagePreview: { borderRadius: 12, height: 54, width: 54 },
   chevron: { alignItems: 'center', height: 28, justifyContent: 'center', width: 28 },
   picker: { backgroundColor: colors.white, borderRadius: 18, boxShadow: '0 0 0 1.5px #e6eadc, 0 8px 18px rgba(28,31,26,.08)', marginTop: 2, padding: 6 },
   pickerList: { maxHeight: 232 },
