@@ -11,7 +11,7 @@ const API_BASE_URL = __DEV__ ? `http://${developmentHost}:3000` : 'https://healt
 
 type ApiErrorPayload = { error?: { message?: string } };
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, retried = false): Promise<T> {
   const token = await getGuestToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
@@ -21,6 +21,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       ...options.headers,
     },
   });
+
+  // A token the server doesn't know (database reset, or moving from a dev server to production)
+  // would fail every request, so start a fresh guest session once and retry.
+  if (response.status === 401 && token && path !== '/v1/guests' && !retried) {
+    await clearGuestToken();
+    await ensureGuest();
+    return request<T>(path, options, true);
+  }
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as ApiErrorPayload;

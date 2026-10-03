@@ -373,6 +373,32 @@ test('uploads a lab report photo, reviews what Flip read, saves it and tracks th
   await ReactTestRenderer.act(async () => tree.unmount());
 });
 
+test('a guest token the server no longer knows is replaced by a fresh guest session', async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const goal = { dailyCalorieTarget: 2000, id: 'g1', startsOn: today, type: 'maintain' };
+  const storage = jest.requireMock('@react-native-async-storage/async-storage');
+  await storage.setItem('@healthflip/guest-token', 'stale-token');
+  const auth: string[] = [];
+  globalThis.fetch = jest.fn((url: string, options?: { headers?: Record<string, string>; method?: string }) => {
+    const header = options?.headers?.Authorization ?? '';
+    auth.push(`${url.replace(/^https?:\/\/[^/]+/, '')} ${header}`);
+    if (header === 'Bearer stale-token') return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ error: { message: 'A valid guest session token is required.' } }) });
+    let body: unknown = { goal };
+    if (url.endsWith('/v1/guests')) body = { accessToken: 'fresh-token' };
+    else if (url.includes('/v1/dashboard')) body = { dashboard: { date: today, goal, meals: [], remainingCalories: 2000, timezone: 'UTC', totalCalories: 0 } };
+    else if (url.includes('/v1/profile')) body = { profile };
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+  }) as unknown as jest.Mock;
+  let tree!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    tree = ReactTestRenderer.create(<App />);
+  });
+  expect(auth.some(line => line.startsWith('/v1/guests'))).toBe(true);
+  expect(await storage.getItem('@healthflip/guest-token')).toBe('fresh-token');
+  expect(textOf(tree)).toContain('Hi, Priya!');
+  await ReactTestRenderer.act(async () => tree.unmount());
+});
+
 test('shows a returning user the minimal meal-first Home', async () => {
   // Details starts collapsed unless the user opened it before.
   await jest.requireMock('@react-native-async-storage/async-storage').removeItem('healthflip.homeDetails');
