@@ -15,7 +15,13 @@ export const GOALS: { id: GoalType; label: string; desc: string }[] = [
   { id: 'gain', label: 'Gain weight', desc: 'Fuel up to build' },
 ];
 
-export type Food = { name: string; serving: string; cal: number; p: number; c: number; f: number };
+export type Food = { name: string; serving: string; cal: number; p: number; c: number; f: number; saved?: boolean };
+
+/** A meal confirmed from a Flip estimate, as a "Pick from list" option (the form takes whole grams). */
+export function foodFromSaved(food: { caloriesKcal: number; carbsGrams: number | null; fatGrams: number | null; name: string; proteinGrams: number | null; serving: string }): Food {
+  const grams = (value: number | null) => Math.round(value ?? 0);
+  return { c: grams(food.carbsGrams), cal: food.caloriesKcal, f: grams(food.fatGrams), name: food.name, p: grams(food.proteinGrams), saved: true, serving: food.serving };
+}
 
 const food = (name: string, serving: string, cal: number, p: number, c: number, f: number): Food => ({ name, serving, cal, p, c, f });
 

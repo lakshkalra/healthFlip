@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a3a1a"/>
+      <stop offset="0.55" stop-color="#1c1f1a"/>
+      <stop offset="1" stop-color="#121410"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.46" r="0.42">
+      <stop offset="0" stop-color="#b7e36a" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#7fbf2a" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#7fbf2a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="0.2" y1="0.9" x2="0.9" y2="0.05">
+      <stop offset="0" stop-color="#9fd34a"/>
+      <stop offset="0.6" stop-color="#c9ef7e"/>
+      <stop offset="1" stop-color="#eefbd2"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <circle cx="512" cy="472" r="430" fill="url(#glow)"/>
+  <!-- orb ring + particles, Flip's voice orb -->
+  <circle cx="512" cy="512" r="318" fill="none" stroke="#d9f0a8" stroke-opacity="0.16" stroke-width="6"/>
+  <circle cx="512" cy="512" r="372" fill="none" stroke="#d9f0a8" stroke-opacity="0.07" stroke-width="4"/>
+  <g fill="#e4f4c6">
+    <circle cx="214" cy="372" r="9" opacity="0.7"/>
+    <circle cx="256" cy="300" r="5" opacity="0.5"/>
+    <circle cx="808" cy="622" r="10" opacity="0.65"/>
+    <circle cx="770" cy="702" r="6" opacity="0.45"/>
+    <circle cx="742" cy="248" r="7" opacity="0.55"/>
+    <circle cx="300" cy="760" r="7" opacity="0.5"/>
+    <circle cx="840" cy="410" r="4" opacity="0.4"/>
+    <circle cx="180" cy="560" r="4" opacity="0.4"/>
+  </g>
+  <!-- leaf (lucide leaf, 24-unit grid scaled to ~560 px) -->
+  <g transform="translate(232 226) scale(23.5)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" fill="url(#leaf)"/>
+    <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" fill="url(#shine)"/>
+    <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" fill="none" stroke="#1c1f1a" stroke-width="1.55"/>
+    <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" fill="none" stroke="#c9ef7e" stroke-width="0.9"/>
+  </g>
+</svg>

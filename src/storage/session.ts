@@ -9,3 +9,7 @@ export async function getGuestToken(): Promise<string | null> {
 export async function saveGuestToken(token: string): Promise<void> {
   await AsyncStorage.setItem(guestTokenKey, token);
 }
+
+export async function clearGuestToken(): Promise<void> {
+  await AsyncStorage.removeItem(guestTokenKey);
+}

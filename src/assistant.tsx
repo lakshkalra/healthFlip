@@ -1,269 +1,418 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { useEffect, useRef, useState } from 'react';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { createMeal, estimateMeal, estimateMealFromImage, type AiMealEstimate } from './api/client';
-import { chooseMealImage } from './media';
-import type { MealType } from './meals';
-import { Icon, PillButton, RoundIconButton, colors } from './ui';
+import { createMeal, estimateMeal, estimateMealFromImage, saveFood, type AiMealEstimate } from './api/client';
+import { TranscriptLine } from './chat';
+import { ParticleOrb } from './flipOrb';
+import { chooseMealImage, type MealImage } from './media';
+import { confirmedName, itemSummary, scaled, stepGrams, toCheckItems, totalsOf, type CheckItem, type Totals } from './mealItems';
+import { MEAL_TYPES, formatNumber, mealTypeLabel, type MealType } from './meals';
+import { Icon, RoundIconButton, Spinner, colors } from './ui';
 
-type AssistantSource = 'manual' | 'photo' | 'voice';
-
-type Message = {
-  id: string;
-  role: 'assistant' | 'user';
-  source?: AssistantSource;
-  text: string;
-  estimate?: AiMealEstimate;
-  logged?: boolean;
-};
+type Source = 'manual' | 'photo';
+type Phase = 'ask' | 'busy' | 'review' | 'correct' | 'logging' | 'logged' | 'error';
+type Message =
+  | { id: string; kind: 'text'; role: 'flip' | 'user'; text: string }
+  | { id: string; kind: 'photo'; uri: string }
+  | { id: string; kind: 'estimate'; estimate: AiMealEstimate; logged: boolean };
+type NewMessage = Message extends infer M ? (M extends Message ? Omit<M, 'id'> : never) : never;
+// What the current estimate came from, so "Not quite" and "Try again" can redo it.
+type Request = { description: string; kind: 'text' } | { image: MealImage; kind: 'photo' };
 
 type AssistantScreenProps = {
-  mealType: MealType;
-  onClose: () => void;
+  /** Sent as the first message, e.g. a food search that found nothing in "Pick from list". */
+  initialQuery?: string;
+  initialType: MealType;
+  remainingCalories: number | null;
+  userName?: string;
+  /** Closes the chat; `logged` is how many meals were added while it was open. */
+  onClose: (logged: number) => void;
   onMealLogged: () => void;
   onOpenLiveVoice: () => void;
+  onPickFromList: (type: MealType) => void;
 };
 
-const welcomeMessage: Message = {
-  id: 'welcome',
-  role: 'assistant',
-  text: 'Hi, I’m Kimbo. Tell me what you ate, or share a meal photo, and I’ll give you a rough wellness estimate to review.',
-};
-
-export function AssistantFab({ bottom, onPress }: { bottom: number; onPress: () => void }) {
-  return (
-    <View style={[styles.fabWrap, { bottom }]}>
-      <Pressable accessibilityLabel="Open Kimbo assistant" accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}>
-        <Icon name="message" color={colors.ink} size={23} stroke={2.2} />
-      </Pressable>
-      <Text style={styles.fabLabel}>Ask Kimbo</Text>
-    </View>
-  );
-}
-
-export function AssistantScreen({ mealType, onClose, onMealLogged, onOpenLiveVoice }: AssistantScreenProps) {
+/** Add-meal chat: Flip asks what you ate, you answer by text, photo or voice, then confirm the estimate. */
+export function AssistantScreen({ initialQuery, initialType, remainingCalories, userName, onClose, onMealLogged, onOpenLiveVoice, onPickFromList }: AssistantScreenProps) {
   const insets = useSafeAreaInsets();
-  const listRef = useRef<FlashListRef<Message> | null>(null);
-  const messageNumber = useRef(0);
-  const [messages, setMessages] = useState<Message[]>([welcomeMessage]);
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const counter = useRef(0);
+  const nextId = () => `m${(counter.current += 1)}`;
+  const [mealType, setMealType] = useState<MealType>(initialType);
+  const [messages, setMessages] = useState<Message[]>(() => [
+    initialQuery
+      ? { id: 'hello', kind: 'text', role: 'flip', text: `Couldn’t find that in the list, so let me estimate it for you.` }
+      : { id: 'hello', kind: 'text', role: 'flip', text: `Hey${userName ? ` ${userName}` : ''}! What did you have for ${mealTypeLabel(initialType).toLowerCase()}? Type it, snap a photo, or tap the mic to tell me.` },
+  ]);
+  const [phase, setPhase] = useState<Phase>('ask');
   const [draft, setDraft] = useState('');
-  const [draftSource, setDraftSource] = useState<AssistantSource>('manual');
-  const [busy, setBusy] = useState(false);
-  const [loggingId, setLoggingId] = useState<string | null>(null);
+  const [request, setRequest] = useState<Request | null>(null);
+  const [current, setCurrent] = useState<{ estimate: AiMealEstimate; id: string; source: Source } | null>(null);
+  const [remaining, setRemaining] = useState(remainingCalories);
+  const [logged, setLogged] = useState(0);
+  // Item checklists by estimate message id; only the current (unlogged) one is editable.
+  const [checklists, setChecklists] = useState<Record<string, CheckItem[]>>({});
+  const items = current ? checklists[current.id] ?? [] : [];
+  const hasItems = items.length > 0;
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
-    return () => cancelAnimationFrame(frame);
-  }, [busy, messages]);
+    const timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
+    return () => clearTimeout(timer);
+  }, [messages, phase]);
 
-  function addMessage(message: Omit<Message, 'id'>) {
-    messageNumber.current += 1;
-    setMessages(current => [...current, { ...message, id: `message-${messageNumber.current}` }]);
-  }
+  // A handed-over search is sent once, as if the user had typed it.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (!initialQuery || seeded.current) return;
+    seeded.current = true;
+    setMessages(list => [...list, { id: 'seed', kind: 'text', role: 'user', text: initialQuery }]);
+    run({ description: initialQuery, kind: 'text' }).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
 
-  async function estimate(description: string, source: AssistantSource, userText: string) {
-    const text = userText.trim();
-    if (text) addMessage({ role: 'user', source, text });
-    setBusy(true);
+  const add = (...entries: NewMessage[]) => setMessages(list => [...list, ...entries.map(entry => ({ ...entry, id: nextId() }) as Message)]);
+  const say = (text: string) => add({ kind: 'text', role: 'flip', text });
+
+  async function run(next: Request) {
+    setRequest(next);
+    setPhase('busy');
     try {
-      const result = await estimateMeal(description, mealType);
-      addMessage({
-        role: 'assistant',
-        source,
-        text: 'Here’s a rough estimate. Review it before adding it to today’s log.',
-        estimate: result,
-      });
-      setDraft('');
-      setDraftSource('manual');
+      const estimate = next.kind === 'text'
+        ? await estimateMeal(next.description, mealType)
+        : await estimateMealFromImage(next.image.base64, next.image.mimeType, mealType);
+      const id = nextId();
+      const found = estimate.items ?? [];
+      setCurrent({ estimate, id, source: next.kind === 'photo' ? 'photo' : 'manual' });
+      if (found.length) setChecklists(lists => ({ ...lists, [id]: toCheckItems(found, id) }));
+      const lead = next.kind === 'photo' ? 'Here’s what I see' : 'Here’s my estimate';
+      setMessages(list => [
+        ...list,
+        { id: nextId(), kind: 'text', role: 'flip', text: found.length ? `${lead}. Untick anything that isn’t there, adjust the weights, or tell me anything I missed.` : `${lead}. Does this look right?` },
+        { estimate, id, kind: 'estimate', logged: false },
+      ]);
+      setPhase('review');
     } catch (error) {
-      addMessage({ role: 'assistant', text: getErrorMessage(error, 'I couldn’t estimate that right now. You can try again or use the manual meal picker.') });
-    } finally {
-      setBusy(false);
+      say(errorMessage(error, next.kind === 'photo' ? 'I couldn’t read that photo. Try another one, or just tell me what it was.' : 'I couldn’t estimate that right now. Want to try again?'));
+      setPhase('error');
     }
   }
 
-  function sendText() {
-    if (!draft.trim() || busy) return;
-    estimate(draft, draftSource, draft);
+  function send() {
+    const text = draft.trim();
+    if (!text || phase === 'busy' || phase === 'logging') return;
+    setDraft('');
+    add({ kind: 'text', role: 'user', text });
+    // While reviewing an itemised estimate, a typed reply is something Flip missed.
+    if (phase === 'review' && current && hasItems) {
+      addMissing(current.id, text).catch(() => undefined);
+      return;
+    }
+    // Otherwise it is a correction to the estimate on screen.
+    if ((phase === 'correct' || phase === 'review') && current && request) {
+      const base = request.kind === 'text' ? request.description : `${current.estimate.name} (from a photo)`;
+      run({ description: `${base}. Correction: ${text}`, kind: 'text' });
+      return;
+    }
+    run({ description: text, kind: 'text' });
   }
 
-  async function handleImage(source: 'camera' | 'library') {
-    if (busy) return;
-    setBusy(true);
+  async function addMissing(id: string, text: string) {
+    setPhase('busy');
     try {
-      const selected = await chooseMealImage(source);
-      if (!selected) return;
-      addMessage({ role: 'user', source: 'photo', text: 'Photo shared for estimation.' });
-      const result = await estimateMealFromImage(selected.base64, selected.mimeType, mealType);
-      addMessage({
-        role: 'assistant',
-        source: 'photo',
-        text: 'I’ve made a rough estimate from the photo. Review it before logging.',
-        estimate: result,
-      });
+      const estimate = await estimateMeal(text, mealType);
+      const found = estimate.items?.length ? estimate.items : [{ caloriesKcal: estimate.caloriesKcal, carbsGrams: estimate.carbsGrams, fatGrams: estimate.fatGrams, grams: 100, name: estimate.name, proteinGrams: estimate.proteinGrams }];
+      setChecklists(lists => ({ ...lists, [id]: [...(lists[id] ?? []), ...toCheckItems(found, nextId(), true)] }));
+      say(`Added ${found.map(item => item.name).join(', ')}. Anything else? Tap Log it when the list looks right.`);
     } catch (error) {
-      addMessage({ role: 'assistant', text: getErrorMessage(error, 'I couldn’t read that photo. Try another image or describe the meal instead.') });
+      say(errorMessage(error, 'I couldn’t add that right now. Try again, or adjust the list and log it.'));
     } finally {
-      setBusy(false);
+      setPhase('review');
     }
   }
 
-  const logEstimate = useCallback(async (message: Message) => {
-    if (!message.estimate || loggingId) return;
-    setLoggingId(message.id);
+  function updateItem(key: string, change: (item: CheckItem) => CheckItem) {
+    if (!current) return;
+    const id = current.id;
+    setChecklists(lists => ({ ...lists, [id]: (lists[id] ?? []).map(item => (item.key === key ? change(item) : item)) }));
+  }
+
+  async function sendPhoto(source: 'camera' | 'library') {
+    if (phase === 'busy' || phase === 'logging') return;
+    try {
+      const image = await chooseMealImage(source);
+      if (!image) return;
+      add({ kind: 'photo', uri: image.uri });
+      run({ image, kind: 'photo' });
+    } catch (error) {
+      say(errorMessage(error, 'That photo couldn’t be opened. Try another one, or just tell me what it was.'));
+      setPhase('error');
+    }
+  }
+
+  async function logIt() {
+    if (!current || phase === 'logging') return;
+    const { estimate, id, source } = current;
+    if (hasItems && !items.some(item => item.checked)) {
+      say('Tick at least one item, or tell me what you had.');
+      return;
+    }
+    // An itemised meal logs exactly what was ticked, at the confirmed weights.
+    const totals: Totals = hasItems ? totalsOf(items) : estimate;
+    const name = hasItems ? confirmedName(estimate.name, items) : estimate.name;
+    const summary = hasItems ? itemSummary(items) : '';
+    setPhase('logging');
     try {
       await createMeal({
-        caloriesKcal: message.estimate.caloriesKcal,
-        carbsGrams: message.estimate.carbsGrams ?? undefined,
-        fatGrams: message.estimate.fatGrams ?? undefined,
+        caloriesKcal: totals.caloriesKcal,
+        carbsGrams: totals.carbsGrams ?? undefined,
+        fatGrams: totals.fatGrams ?? undefined,
         mealType,
-        name: message.estimate.name,
-        note: 'Estimated with Kimbo. Review the portion if needed.',
-        proteinGrams: message.estimate.proteinGrams ?? undefined,
-        source: message.source ?? 'manual',
+        name,
+        note: summary ? `Items: ${summary}` : 'Estimated with Flip. Review the portion if needed.',
+        proteinGrams: totals.proteinGrams ?? undefined,
+        source,
       });
-      setMessages(current => current.map(item => item.id === message.id ? { ...item, logged: true } : item));
+      // Confirmed meals become "Pick from list" options; this never blocks logging.
+      saveFood({ ...totals, name, serving: summary || '1 serving' }).catch(() => undefined);
+      const left = remaining === null ? null : remaining - totals.caloriesKcal;
+      setRemaining(left);
+      setLogged(count => count + 1);
+      setCurrent(null);
+      setMessages(list => list.map(item => (item.id === id && item.kind === 'estimate' ? { ...item, logged: true } : item)));
+      say(left === null ? 'Logged! Anything else?' : left >= 0 ? `Logged! ${formatNumber(left)} kcal left today. Anything else?` : `Logged! You’re ${formatNumber(-left)} kcal over today, and that’s okay. Anything else?`);
+      setPhase('logged');
       onMealLogged();
     } catch (error) {
-      addMessage({ role: 'assistant', text: getErrorMessage(error, 'I couldn’t save that meal right now. Your estimate is still here to retry.') });
-    } finally {
-      setLoggingId(null);
+      say(errorMessage(error, 'I couldn’t save that meal right now. Your estimate is still here, so try again in a moment.'));
+      setPhase('review');
     }
-  }, [loggingId, mealType, onMealLogged]);
+  }
 
-  const renderMessage = useCallback(({ item: message }: { item: Message }) => (
-    <View style={[styles.messageGroup, message.role === 'user' && styles.userGroup]}>
-      <View style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
-        <Text style={[styles.messageText, message.role === 'user' && styles.userMessageText]}>{message.text}</Text>
-      </View>
-      {message.estimate ? (
-        <View style={styles.estimateCard}>
-          <View style={styles.estimateHeader}>
-            <View style={styles.grow}>
-              <Text style={styles.estimateName}>{message.estimate.name}</Text>
-              <Text style={styles.estimateMeta}>{message.estimate.confidence} confidence · {message.estimate.source === 'fallback' ? 'rough local estimate' : 'AI estimate'}</Text>
-            </View>
-            <Text style={styles.calories}>{message.estimate.caloriesKcal} kcal</Text>
-          </View>
-          <Text style={styles.macros}>Protein {message.estimate.proteinGrams ?? '—'}g · Carbs {message.estimate.carbsGrams ?? '—'}g · Fat {message.estimate.fatGrams ?? '—'}g</Text>
-          <View style={styles.assumptions}>
-            <Text style={styles.assumptionsTitle}>How Kimbo estimated this</Text>
-            {message.estimate.assumptions.map((assumption, index) => <Text key={`${message.id}-assumption-${index}`} style={styles.assumption}>• {assumption}</Text>)}
-          </View>
-          <PillButton title={message.logged ? 'Added to today' : 'Log this estimate'} variant={message.logged ? 'muted' : 'dark'} height={44} busy={loggingId === message.id} busyLabel="Logging…" onPress={() => logEstimate(message)} />
-        </View>
-      ) : null}
-    </View>
-  ), [loggingId, logEstimate]);
+  function pickType(type: MealType) {
+    setMealType(type);
+    if (phase === 'ask' && type !== mealType) say(`Got it, ${mealTypeLabel(type).toLowerCase()}. What did you have?`);
+  }
+
+  const chip = (label: string, onPress: () => void, primary = false) => ({ label, onPress, primary });
+  const pickFromList = chip('Pick from list', () => onPickFromList(mealType));
+  const chips = phase === 'review'
+    ? [
+      chip('Log it', () => { logIt().catch(() => undefined); }, true),
+      hasItems
+        ? chip('Add an item', () => say('What did I miss? Just type it, like “a glass of lassi”.'))
+        : chip('Not quite', () => { say('No problem! What should I change? For example “it was 2 rotis” or “half a bowl”.'); setPhase('correct'); }),
+      pickFromList,
+    ]
+    : phase === 'logged'
+      ? [chip('Done', () => onClose(logged), true), chip('Add another', () => { setRequest(null); say('What else did you have?'); setPhase('ask'); })]
+      : phase === 'error'
+        ? [...(request ? [chip('Try again', () => { run(request).catch(() => undefined); }, true)] : []), pickFromList]
+        : phase === 'ask'
+          ? [pickFromList]
+          : [];
+  const lastId = messages[messages.length - 1]?.id;
+  const busy = phase === 'busy' || phase === 'logging';
+  const canType = !busy;
 
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={insets.top}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
-        <RoundIconButton name="arrowLeft" label="Back from Kimbo" bg={colors.chip} size={42} iconSize={20} stroke={2.6} onPress={onClose} />
-        <View style={styles.titleRow}>
-          <View style={styles.kimboIcon}><Icon name="leaf" color={colors.greenDark} size={19} /></View>
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <RoundIconButton name="arrowLeft" label="Back from Flip" iconSize={20} stroke={2.6} onPress={() => onClose(logged)} />
+        <View style={styles.headerCenter}>
+          <View style={styles.orb}><ParticleOrb width={34} height={34} mini /></View>
           <View>
-            <Text style={styles.title}>Ask Kimbo</Text>
-            <Text style={styles.subtitle}>Your wellness assistant</Text>
+            <Text style={styles.title}>Log a meal</Text>
+            <Text style={styles.subtitle}>with Flip</Text>
           </View>
         </View>
-        <View style={styles.headerSpacer} />
+        <View style={styles.spacer44} />
       </View>
 
-      <FlashList
-        ref={listRef}
-        data={messages}
-        keyExtractor={message => message.id}
-        renderItem={renderMessage}
-        style={styles.list}
-        contentContainerStyle={styles.messages}
-        keyboardShouldPersistTaps="handled"
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-        ListFooterComponent={busy ? <Text style={styles.typing}>Kimbo is thinking…</Text> : null}
-      />
+      <View style={styles.types}>
+        {MEAL_TYPES.map(({ id, label }) => {
+          const on = id === mealType;
+          return (
+            <Pressable key={id} accessibilityRole="radio" accessibilityState={{ selected: on }} accessibilityLabel={label} onPress={() => pickType(id)} style={[styles.type, on && styles.typeOn]}>
+              <Text style={[styles.typeText, on && styles.typeTextOn]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
-      <View style={[styles.composerArea, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <View style={styles.composer}>
-          <TextInput
-            accessibilityLabel="Message Kimbo"
-            value={draft}
-            onChangeText={text => { setDraft(text); setDraftSource('manual'); }}
-            editable={!busy}
-            multiline
-            returnKeyType="send"
-            onSubmitEditing={sendText}
-            placeholder="Tell Kimbo what you ate…"
-            placeholderTextColor={colors.faint}
-            style={styles.input}
-          />
-          <RoundIconButton name="arrowRight" label="Send message" bg={draft.trim() ? colors.limeBright : colors.chip} size={40} iconSize={18} stroke={2.6} busy={busy} onPress={sendText} />
+      <ScrollView ref={scrollRef} style={styles.flex} contentContainerStyle={styles.transcript} keyboardShouldPersistTaps="handled">
+        {messages.map(message => {
+          if (message.kind === 'photo') return <Image key={message.id} source={{ uri: message.uri }} accessibilityLabel="Your meal photo" style={styles.photo} />;
+          if (message.kind === 'estimate') {
+            const editable = current?.id === message.id && !message.logged;
+            return <EstimateCard key={message.id} estimate={message.estimate} items={checklists[message.id] ?? []} logged={message.logged} onChange={editable ? updateItem : undefined} />;
+          }
+          return <TranscriptLine key={message.id} animate={message.id === lastId} role={message.role} text={message.text} />;
+        })}
+        {busy ? <View style={styles.thinking}><Spinner color={colors.greenDark} /><Text style={styles.thinkingText}>{phase === 'logging' ? 'Logging…' : 'Flip is thinking…'}</Text></View> : null}
+      </ScrollView>
+
+      {chips.length ? (
+        <View style={styles.chips}>
+          {chips.map(item => (
+            <Pressable key={item.label} accessibilityRole="button" onPress={item.onPress} style={({ pressed }) => [styles.chip, item.primary && styles.chipPrimary, pressed && styles.chipPressed]}>
+              <Text style={[styles.chipText, item.primary && styles.chipTextPrimary]}>{item.label}</Text>
+            </Pressable>
+          ))}
         </View>
-        <View style={styles.mediaRow}>
-          <Pressable accessibilityLabel="Start a live voice conversation with Kimbo" accessibilityRole="button" disabled={busy} onPress={onOpenLiveVoice} style={({ pressed }) => [styles.mediaButton, styles.voice, pressed && styles.pressed, busy && styles.disabled]}>
-            <Icon name="mic" color={colors.greenDark} size={17} />
-            <Text style={styles.mediaText}>Talk live</Text>
+      ) : null}
+
+      <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <RoundIconButton name="camera" label="Take a meal photo" bg={colors.bg} size={42} iconSize={19} onPress={() => { sendPhoto('camera').catch(() => undefined); }} />
+        <RoundIconButton name="image" label="Choose a meal photo" bg={colors.bg} size={42} iconSize={19} onPress={() => { sendPhoto('library').catch(() => undefined); }} />
+        <TextInput
+          accessibilityLabel="Message Flip"
+          value={draft}
+          onChangeText={setDraft}
+          editable={canType}
+          placeholder={phase === 'review' && hasItems ? 'Anything I missed?' : phase === 'correct' || phase === 'review' ? 'What should I change?' : 'e.g. 2 rotis and dal'}
+          placeholderTextColor={colors.faint}
+          returnKeyType="send"
+          onSubmitEditing={send}
+          style={styles.input}
+        />
+        {draft.trim() ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Send message" disabled={!canType} onPress={send} style={[styles.send, !canType && styles.disabled]}>
+            <Icon name="arrowRight" color={colors.limeBright} size={20} stroke={2.6} />
           </Pressable>
-          <Pressable accessibilityLabel="Share meal photo" accessibilityRole="button" disabled={busy} onPress={() => { handleImage('library'); }} style={({ pressed }) => [styles.mediaButton, pressed && styles.pressed, busy && styles.disabled]}>
-            <Icon name="image" color={colors.greenDark} size={17} />
-            <Text style={styles.mediaText}>Photo</Text>
+        ) : (
+          <Pressable accessibilityRole="button" accessibilityLabel="Talk to Flip" onPress={onOpenLiveVoice} style={styles.send}>
+            <Icon name="mic" color={colors.limeBright} size={20} stroke={2.4} />
           </Pressable>
-          <Pressable accessibilityLabel="Take meal photo for Kimbo" accessibilityRole="button" disabled={busy} onPress={() => { handleImage('camera'); }} style={({ pressed }) => [styles.mediaButton, pressed && styles.pressed, busy && styles.disabled]}>
-            <Icon name="camera" color={colors.greenDark} size={17} />
-            <Text style={styles.mediaText}>Camera</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.disclaimer}>Wellness estimates are approximate, not medical advice.</Text>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-function getErrorMessage(error: unknown, fallback: string): string {
+function EstimateCard({ estimate, items, logged, onChange }: { estimate: AiMealEstimate; items: CheckItem[]; logged: boolean; onChange?: (key: string, change: (item: CheckItem) => CheckItem) => void }) {
+  const totals: Totals = items.length ? totalsOf(items) : estimate;
+  const name = items.length ? confirmedName(estimate.name, items) : estimate.name;
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardTop}>
+        <View style={styles.grow}>
+          <Text style={styles.cardName}>{name}</Text>
+          <Text style={styles.cardMeta}>{estimate.confidence} confidence · {estimate.source === 'fallback' ? 'rough local estimate' : 'AI estimate'}</Text>
+        </View>
+        <Text style={styles.cardKcal} accessible accessibilityLabel={`${totals.caloriesKcal} kcal in total`}>{formatNumber(totals.caloriesKcal)} kcal</Text>
+      </View>
+      <Text style={styles.cardMacros}>Protein {totals.proteinGrams ?? '—'}g · Carbs {totals.carbsGrams ?? '—'}g · Fat {totals.fatGrams ?? '—'}g</Text>
+      {estimate.healthTip ? (
+        <View style={styles.tip}>
+          <Icon name="leaf" size={14} color={colors.greenDark} />
+          <Text style={styles.tipText}>{estimate.healthTip}</Text>
+        </View>
+      ) : null}
+      {items.length ? (
+        <View style={styles.items}>
+          {items.map(item => <ItemRow key={item.key} item={item} onChange={onChange} />)}
+        </View>
+      ) : estimate.assumptions.length ? (
+        <View style={styles.assumptions}>
+          {estimate.assumptions.slice(0, 3).map((assumption, index) => <Text key={index} style={styles.assumption}>• {assumption}</Text>)}
+        </View>
+      ) : null}
+      {logged ? (
+        <View style={styles.loggedRow}>
+          <Icon name="check" size={14} color={colors.greenDark} stroke={3} />
+          <Text style={styles.loggedText}>Added to today</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** One checklist row: tick on/off, approximate weight with ±10 g, and its calories at that weight. */
+function ItemRow({ item, onChange }: { item: CheckItem; onChange?: (key: string, change: (item: CheckItem) => CheckItem) => void }) {
+  const { name } = item.original;
+  const kcal = scaled(item).caloriesKcal;
+  const off = !item.checked;
+  return (
+    <View style={styles.itemRow}>
+      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: item.checked, disabled: !onChange }} accessibilityLabel={name} disabled={!onChange} hitSlop={6} onPress={() => onChange?.(item.key, current => ({ ...current, checked: !current.checked }))} style={styles.itemCheck}>
+        <View style={[styles.box, item.checked && styles.boxOn]}>
+          {item.checked ? <Icon name="check" size={13} color={colors.white} stroke={3.2} /> : null}
+        </View>
+        <Text style={[styles.itemName, off && styles.itemOff]} numberOfLines={2}>{name}</Text>
+      </Pressable>
+      {onChange && item.checked ? (
+        <View style={styles.stepper}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Less ${name}`} hitSlop={6} onPress={() => onChange(item.key, current => ({ ...current, grams: stepGrams(current.grams, -10) }))} style={styles.stepButton}>
+            <Icon name="minus" size={13} stroke={2.8} />
+          </Pressable>
+          <Text style={styles.grams}>~{item.grams} g</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={`More ${name}`} hitSlop={6} onPress={() => onChange(item.key, current => ({ ...current, grams: stepGrams(current.grams, 10) }))} style={styles.stepButton}>
+            <Icon name="plus" size={13} stroke={2.8} />
+          </Pressable>
+        </View>
+      ) : (
+        <Text style={[styles.grams, off && styles.itemOff]}>~{item.grams} g</Text>
+      )}
+      <Text style={[styles.itemKcal, off && styles.itemOff]}>{kcal} kcal</Text>
+    </View>
+  );
+}
+
+function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.bg, flex: 1 },
-  grow: { flex: 1, gap: 3, minWidth: 0 },
-  header: { alignItems: 'center', backgroundColor: colors.white, flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 14, paddingHorizontal: 18 },
-  headerSpacer: { width: 42 },
-  titleRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  kimboIcon: { alignItems: 'center', backgroundColor: colors.limeBright, borderRadius: 13, height: 40, justifyContent: 'center', width: 40 },
-  title: { color: colors.ink, fontSize: 20, fontWeight: '800' },
-  subtitle: { color: colors.muted2, fontSize: 12, marginTop: 2 },
-  list: { flex: 1 },
-  messages: { gap: 12, paddingBottom: 18, paddingHorizontal: 20, paddingTop: 18 },
-  messageGroup: { alignItems: 'flex-start', gap: 8 },
-  userGroup: { alignItems: 'flex-end' },
-  bubble: { borderRadius: 18, maxWidth: '88%', paddingHorizontal: 14, paddingVertical: 11 },
-  assistantBubble: { backgroundColor: colors.white, borderBottomLeftRadius: 6 },
-  userBubble: { backgroundColor: colors.greenDark, borderBottomRightRadius: 6 },
-  messageText: { color: colors.ink, fontSize: 14, lineHeight: 20 },
-  userMessageText: { color: colors.white },
-  estimateCard: { backgroundColor: colors.pale, borderRadius: 20, gap: 10, padding: 14, width: '100%' },
-  estimateHeader: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  estimateName: { color: colors.ink, fontSize: 16, fontWeight: '800' },
-  estimateMeta: { color: colors.muted2, fontSize: 11, marginTop: 2 },
-  calories: { color: colors.greenDark, fontSize: 17, fontWeight: '800' },
-  macros: { color: colors.muted, fontSize: 13 },
-  assumptions: { backgroundColor: colors.white, borderRadius: 12, gap: 4, padding: 10 },
-  assumptionsTitle: { color: colors.ink, fontSize: 12, fontWeight: '800' },
-  assumption: { color: colors.muted, fontSize: 11, lineHeight: 16 },
-  typing: { color: colors.muted2, fontSize: 12, paddingHorizontal: 4 },
-  composerArea: { backgroundColor: colors.white, borderTopColor: colors.chip, borderTopWidth: 1, gap: 9, paddingHorizontal: 18, paddingTop: 12 },
-  composer: { alignItems: 'flex-end', backgroundColor: colors.bg, borderRadius: 18, flexDirection: 'row', gap: 8, minHeight: 56, paddingHorizontal: 8, paddingVertical: 8 },
-  input: { color: colors.ink, flex: 1, fontSize: 15, maxHeight: 100, minHeight: 38, paddingHorizontal: 8, paddingVertical: 8 },
-  mediaRow: { flexDirection: 'row', gap: 8 },
-  voice: { flex: 1 },
-  mediaButton: { alignItems: 'center', backgroundColor: colors.bg, borderRadius: 14, flexDirection: 'row', gap: 6, minHeight: 44, paddingHorizontal: 12 },
-  mediaText: { color: colors.greenDark, fontSize: 12, fontWeight: '800' },
-  pressed: { backgroundColor: colors.selected },
-  disabled: { opacity: 0.55 },
-  disclaimer: { color: colors.faint, fontSize: 11, paddingBottom: 2, textAlign: 'center' },
-  fabWrap: { alignItems: 'center', position: 'absolute', right: 18, zIndex: 30 },
-  fab: { alignItems: 'center', backgroundColor: colors.greenDark, borderColor: colors.white, borderRadius: 30, borderWidth: 4, boxShadow: '0 7px 15px rgba(61,90,18,.25)', height: 60, justifyContent: 'center', width: 60 },
-  fabPressed: { transform: [{ scale: 0.94 }] },
-  fabLabel: { backgroundColor: colors.white, borderRadius: 99, color: colors.greenDark, fontSize: 10, fontWeight: '800', marginTop: 3, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 3 },
+  flex: { flex: 1 },
+  grow: { flex: 1, gap: 2, minWidth: 0 },
+  header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 10, paddingHorizontal: 16 },
+  headerCenter: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  orb: { alignItems: 'center', backgroundColor: colors.selected, borderRadius: 17, height: 34, justifyContent: 'center', overflow: 'hidden', width: 34 },
+  title: { color: colors.ink, fontSize: 17, fontWeight: '800' },
+  subtitle: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+  spacer44: { height: 44, width: 44 },
+  types: { backgroundColor: colors.chip, borderRadius: 16, flexDirection: 'row', gap: 4, marginHorizontal: 16, padding: 4 },
+  type: { alignItems: 'center', borderRadius: 12, flex: 1, justifyContent: 'center', minHeight: 36 },
+  typeOn: { backgroundColor: colors.white, boxShadow: '0 2px 8px rgba(28,31,26,.08)' },
+  typeText: { color: colors.muted, fontSize: 13, fontWeight: '700' },
+  typeTextOn: { color: colors.ink },
+  transcript: { flexGrow: 1, gap: 14, justifyContent: 'flex-end', paddingBottom: 12, paddingHorizontal: 22, paddingTop: 16 },
+  photo: { alignSelf: 'flex-end', borderRadius: 20, height: 150, width: 200 },
+  thinking: { alignItems: 'center', flexDirection: 'row', gap: 8, paddingVertical: 4 },
+  thinkingText: { color: colors.muted2, fontSize: 13, fontWeight: '600' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 10, paddingHorizontal: 16 },
+  chip: { backgroundColor: colors.white, borderColor: '#e3e6dc', borderRadius: 18, borderWidth: 1.5, justifyContent: 'center', minHeight: 38, paddingHorizontal: 14, paddingVertical: 7 },
+  chipPrimary: { backgroundColor: colors.ink, borderColor: colors.ink },
+  chipPressed: { backgroundColor: colors.selected },
+  chipText: { color: colors.ink, fontSize: 14, fontWeight: '700' },
+  chipTextPrimary: { color: colors.white },
+  inputBar: { alignItems: 'center', backgroundColor: colors.white, borderTopColor: colors.chip, borderTopWidth: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10 },
+  input: { backgroundColor: colors.bg, borderRadius: 22, color: colors.ink, flex: 1, fontSize: 16, height: 44, paddingHorizontal: 16 },
+  send: { alignItems: 'center', backgroundColor: colors.ink, borderRadius: 22, height: 44, justifyContent: 'center', width: 44 },
+  disabled: { opacity: 0.35 },
+  card: { alignSelf: 'stretch', backgroundColor: colors.white, borderRadius: 24, boxShadow: '0 8px 22px rgba(28,31,26,.08)', gap: 10, padding: 16 },
+  tip: { alignItems: 'flex-start', backgroundColor: colors.pale, borderRadius: 12, flexDirection: 'row', gap: 8, padding: 10 },
+  tipText: { color: colors.greenDark, flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  items: { borderTopColor: colors.chip, borderTopWidth: 1, gap: 2, paddingTop: 6 },
+  itemRow: { alignItems: 'center', flexDirection: 'row', gap: 8, minHeight: 40 },
+  itemCheck: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: 10, minWidth: 0 },
+  box: { alignItems: 'center', borderColor: colors.ring, borderRadius: 7, borderWidth: 2, height: 22, justifyContent: 'center', width: 22 },
+  boxOn: { backgroundColor: colors.green, borderColor: colors.green },
+  itemName: { color: colors.ink, flexShrink: 1, fontSize: 14, fontWeight: '700' },
+  itemOff: { color: colors.faint, textDecorationLine: 'line-through' },
+  stepper: { alignItems: 'center', backgroundColor: colors.bg, borderRadius: 14, flexDirection: 'row', gap: 2, padding: 2 },
+  stepButton: { alignItems: 'center', backgroundColor: colors.white, borderRadius: 12, height: 26, justifyContent: 'center', width: 26 },
+  grams: { color: colors.muted, fontSize: 12, fontWeight: '700', minWidth: 46, textAlign: 'center' },
+  itemKcal: { color: colors.ink, fontSize: 13, fontWeight: '700', minWidth: 58, textAlign: 'right' },
+  cardTop: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  cardName: { color: colors.ink, fontSize: 16, fontWeight: '800' },
+  cardMeta: { color: colors.muted2, fontSize: 11 },
+  cardKcal: { color: colors.greenDark, fontSize: 18, fontWeight: '800' },
+  cardMacros: { color: colors.muted, fontSize: 13 },
+  assumptions: { backgroundColor: colors.bg, borderRadius: 12, gap: 3, padding: 10 },
+  assumption: { color: colors.muted, fontSize: 12, lineHeight: 17 },
+  loggedRow: { alignItems: 'center', flexDirection: 'row', gap: 6 },
+  loggedText: { color: colors.greenDark, fontSize: 13, fontWeight: '800' },
 });

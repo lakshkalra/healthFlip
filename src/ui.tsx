@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -10,11 +11,13 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type StyleProp,
   type TextInputProps,
   type ViewStyle,
   TextInput,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { formatNumber, formatTime, mealCalories, type MealType } from './meals';
@@ -97,6 +100,9 @@ const ICONS = {
   image: ['M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', circle(8.5, 8.5, 1.5), 'm22 16-5-5L6 22'],
   mic: ['M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z', 'M19 10v2a7 7 0 0 1-14 0v-2', 'M12 19v3M8 22h8'],
   minus: ['M5 12h14'],
+  micOff: ['M2 2l20 20', 'M18.89 13.23A7.12 7.12 0 0 0 19 12v-2', 'M5 10v2a7 7 0 0 0 12 5', 'M15 9.34V5a3 3 0 0 0-5.68-1.33', 'M9 9v3a3 3 0 0 0 5.12 2.12', 'M12 19v3'],
+  keyboard: ['M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z', 'M6 9h.01M10 9h.01M14 9h.01M18 9h.01M8 13h.01M12 13h.01M16 13h.01', 'M7 16h10'],
+  stop: ['M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z'],
   nutrition: ['M12 6.528V3a1 1 0 0 1 1-1M18.237 21A15 15 0 0 0 22 11a6 6 0 0 0-10-4.472A6 6 0 0 0 2 11a15.1 15.1 0 0 0 3.763 10 3 3 0 0 0 3.648.648 5.5 5.5 0 0 1 5.178 0A3 3 0 0 0 18.237 21'],
   moon: ['M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z'],
   message: ['M20 11.5a7.5 7.5 0 0 1-7.5 7.5 8.4 8.4 0 0 1-3.3-.67L4 20l1.67-4.2A7.5 7.5 0 1 1 20 11.5Z'],
@@ -281,6 +287,19 @@ export function MacroBar({ label, value, target, color, track }: { label: string
 export function Overlay({ visible, onClose, variant = 'sheet', children }: { visible: boolean; onClose: () => void; variant?: 'sheet' | 'dialog'; children: ReactNode }) {
   const anim = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(visible);
+  const [keyboard, setKeyboard] = useState(0);
+  const window = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return undefined;
+    const show = Keyboard.addListener('keyboardWillShow', event => setKeyboard(event.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboard(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -293,13 +312,18 @@ export function Overlay({ visible, onClose, variant = 'sheet', children }: { vis
 
   if (!mounted && !visible) return null;
   const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [variant === 'sheet' ? 700 : 500, 0] });
+  // An absolutely positioned sheet ignores KeyboardAvoidingView padding, so on iOS it sits on top of
+  // the keyboard explicitly and shrinks to the space that is left.
+  const sheetFrame = variant === 'sheet' && Platform.OS === 'ios'
+    ? { bottom: keyboard, maxHeight: window.height - keyboard - insets.top - 8 }
+    : null;
   return (
     <Modal transparent visible animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={variant !== 'sheet' || Platform.OS !== 'ios'}>
         <Animated.View style={[StyleSheet.absoluteFill, variant === 'sheet' ? styles.scrimSheet : styles.scrimDialog, { opacity: anim }]}>
           <Pressable accessibilityLabel="Close" style={styles.flex} onPress={onClose} />
         </Animated.View>
-        <Animated.View style={[variant === 'sheet' ? styles.sheet : styles.dialog, { transform: [{ translateY }] }]}>{children}</Animated.View>
+        <Animated.View style={[variant === 'sheet' ? styles.sheet : styles.dialog, sheetFrame, { transform: [{ translateY }] }]}>{children}</Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );

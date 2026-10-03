@@ -31,9 +31,16 @@ target 'healthFlip' do
       # :ccache_enabled => true
     )
 
+    # ReactNativeHealthkitCore imports a private Swift module (ios/module.modulemap) but only adds it to
+    # its own include path; with explicit module builds its dependent pod must resolve it too.
+    healthkit_core_ios = File.join(config[:reactNativePath], '..', '@react-native-healthkit', 'core', 'ios')
+
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |build_config|
         build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+        if target.name == 'ReactNativeHealthkit'
+          build_config.build_settings['SWIFT_INCLUDE_PATHS'] = "$(inherited) \"#{File.expand_path(healthkit_core_ios)}\""
+        end
       end
     end
   end

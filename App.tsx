@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ActionSheetIOS, Alert, Linking, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions, type ScrollViewInstance } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { createMeal, deleteMeal, getCurrentGoal, getDailyInsight, getDashboard, saveGoal, updateMeal, type DailyInsight, type MealInput } from './src/api/client';
-import { AssistantFab, AssistantScreen } from './src/assistant';
+import { createMeal, deleteMeal, getCurrentGoal, getDailyInsight, getDashboard, getProfile, listFoods, logWater, resetGuest, saveGoal, setWaterTarget, undoWater, updateMeal, type DailyInsight, type MealInput } from './src/api/client';
+import { AssistantScreen } from './src/assistant';
+import { AskFlipPill, FlipReveal, type RevealOrigin } from './src/flip';
+import { HealthRow, WaterCard, type HomeHealthActions } from './src/health';
+import { firstName, type OnboardingStep } from './src/onboarding';
+import { OnboardingChat } from './src/onboardingChat';
+import { ProfileScreen } from './src/profile';
 import { VoiceConversationScreen } from './src/voice';
 import { ProgressScreen } from './src/progress';
-import { RewardsScreen } from './src/rewards';
+import { PlansScreen } from './src/plans';
+import { applyWaterReminders, clearAllReminders, DEFAULT_REMINDERS, loadReminderSettings, nextReminder, saveReminderSettings, type ReminderSettings } from './src/reminders';
+import { ReportsScreen } from './src/reports';
 import { TipsScreen } from './src/tips';
+import { syncWidget } from './src/widget';
+import { notificationStatus, takeLaunchURL, updateWidget } from './src/native';
 import {
   FOODS,
   GOALS,
   MEAL_TYPES,
   dateKey,
+  foodFromSaved,
   formatNumber,
   formatTime,
   goalLabel,
@@ -21,9 +32,10 @@ import {
   mealTypeLabel,
   mealTypeOf,
   typeForHour,
+  type Food,
   type MealType,
 } from './src/meals';
-import type { Dashboard, GoalType, Meal } from './src/types';
+import type { Dashboard, GoalType, Meal, Profile } from './src/types';
 import {
   Banner,
   Card,
@@ -33,7 +45,6 @@ import {
   IconTile,
   InputShell,
   MacroBar,
-  MealGroupCard,
   MealTypeTile,
   NumberInput,
   Overlay,
@@ -47,8 +58,8 @@ import {
   type IconName,
 } from './src/ui';
 
-type Tab = 'home' | 'progress' | 'rewards' | 'tips';
-type Route = 'assistant' | 'voice' | 'boot' | 'goal' | 'detail' | Tab;
+type Tab = 'home' | 'progress' | 'plans' | 'tips';
+type Route = 'assistant' | 'boot' | 'goal' | 'detail' | 'onboarding' | 'profile' | 'reports' | Tab;
 type BootState = 'loading' | 'first' | 'returning' | 'error';
 type DashState = 'loading' | 'ready' | 'refreshing' | 'fail' | 'error';
 type MealTypes = Record<string, MealType>;
@@ -66,10 +77,13 @@ function App() {
 
 function Root() {
   const insets = useSafeAreaInsets();
+  const window = useWindowDimensions();
   const [route, setRoute] = useState<Route>('boot');
   const [boot, setBoot] = useState<BootState>('loading');
   const [target, setTarget] = useState(2000);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [onboarding, setOnboarding] = useState<{ cancelable: boolean; startAt: OnboardingStep }>({ cancelable: false, startAt: 'about' });
   const [insight, setInsight] = useState<DailyInsight | null>(null);
   const [insightState, setInsightState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [dash, setDash] = useState<DashState>('loading');
@@ -77,16 +91,27 @@ function Root() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<{ open: boolean; mode: 'add' | 'edit'; type: MealType; key: number }>({ open: false, mode: 'add', type: 'breakfast', key: 0 });
   const [assistantReturnRoute, setAssistantReturnRoute] = useState<Tab>('home');
+  // Set when the food search hands a query to Flip; the chat sends it straight away.
+  const [assistantSeed, setAssistantSeed] = useState<{ query: string; type: MealType } | null>(null);
+  // Flip is an overlay above the current route so the screen underneath shows through the reveal.
+  const [flip, setFlip] = useState<{ instant: boolean; open: boolean; origin: RevealOrigin }>({ instant: false, open: false, origin: { x: 0, y: 0 } });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, key: 0 });
   const [toast, setToast] = useState('');
   const [viewing, setViewing] = useState<Dashboard | null>(null);
+  // Reports open over the current tab; the id opens one report directly.
+  const [reportsView, setReportsView] = useState<{ key: number; reportId: string | null; returnTo: Tab }>({ key: 0, reportId: null, returnTo: 'home' });
+  const [reminders, setReminders] = useState<ReminderSettings>(DEFAULT_REMINDERS);
+  const [waterBusy, setWaterBusy] = useState(false);
+  const [plansSignal, setPlansSignal] = useState(0);
   const [historyVersion, setHistoryVersion] = useState(0);
+  // Bumped when Flip saves a plan by voice so the Plans tab reloads.
+  const [plansVersion, setPlansVersion] = useState(0);
   const [progressPop, setProgressPop] = useState(0);
   const [tipsPop, setTipsPop] = useState(0);
   const [editingGoal, setEditingGoal] = useState<{ dailyCalorieTarget: number; type: GoalType } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const dashBusy = useRef(false);
-  const activeTab: Tab | null = route === 'home' || route === 'progress' || route === 'rewards' || route === 'tips' ? route : null;
+  const activeTab: Tab | null = route === 'home' || route === 'progress' || route === 'plans' || route === 'tips' ? route : null;
 
   // Selected meal looks up in today's dashboard first, then in any past day being viewed.
   const selected = dashboard?.meals.find(meal => meal.id === selectedId) ?? viewing?.meals.find(meal => meal.id === selectedId) ?? null;
@@ -131,16 +156,23 @@ function Root() {
     setRoute('boot');
     setBoot('loading');
     try {
-      const goal = await getCurrentGoal();
+      const [goal, savedProfile] = await Promise.all([getCurrentGoal(), getProfile()]);
       setTarget(goal?.dailyCalorieTarget ?? 2000);
-      if (!goal) {
+      setProfile(savedProfile);
+      // New guests (and guests from before profiles existed) go through onboarding once.
+      if (!savedProfile || !goal) {
         setBoot('first');
         await wait(1200);
-        setRoute('goal');
+        setOnboarding({ cancelable: false, startAt: savedProfile ? 'goal' : 'about' });
+        setRoute('onboarding');
         return;
       }
       setBoot('returning');
-      setDashboard(await getDashboard());
+      const [today, settings] = await Promise.all([getDashboard(), loadReminderSettings()]);
+      setReminders(settings);
+      // Keep scheduled reminders in step with the server's target without prompting at launch.
+      if ((await notificationStatus().catch(() => 'undetermined')) === 'granted') applyWaterReminders(today.water?.targetMl ?? null, settings).catch(() => undefined);
+      setDashboard(today);
       setDash('ready');
       setRoute('home');
       loadInsight();
@@ -148,6 +180,40 @@ function Root() {
       setBoot('error');
     }
   }, [loadInsight]);
+
+  // The Home Screen widget mirrors today's numbers whenever they change.
+  useEffect(() => {
+    syncWidget(dashboard, dashboard?.goal?.dailyCalorieTarget ?? target, insight?.message ?? null, dashboard?.water?.targetMl ? nextReminder(reminders) : null);
+  }, [dashboard, insight, reminders, target]);
+
+  // Widget taps open the app with healthflip://log-meal, ://water or ://reports.
+  const pendingLink = useRef<string | null>(null);
+  const deepLink = useRef<(url: string | null) => void>(() => undefined);
+  deepLink.current = (url: string | null) => {
+    if (!url) return;
+    // Links that arrive before Home is ready (boot, onboarding) wait until it is.
+    if (!activeTab) {
+      pendingLink.current = url;
+      return;
+    }
+    const target_ = url.replace(/^healthflip:\/\//, '').split(/[?#]/)[0];
+    if (target_ === 'log-meal') openAssistant();
+    else if (target_ === 'reports') openReports();
+    else if (target_ === 'water' || target_ === 'home') { setViewing(null); setRoute('home'); }
+  };
+  useEffect(() => {
+    Promise.all([takeLaunchURL().catch(() => null), Linking.getInitialURL().catch(() => null)])
+      .then(([launched, initial]) => { pendingLink.current = launched ?? initial ?? null; })
+      .catch(() => undefined);
+    const subscription = Linking.addEventListener('url', ({ url }) => deepLink.current(url));
+    return () => subscription.remove();
+  }, []);
+  useEffect(() => {
+    if (activeTab && pendingLink.current) {
+      deepLink.current(pendingLink.current);
+      pendingLink.current = null;
+    }
+  }, [activeTab]);
 
   // If the open meal disappears after a refresh, fall back to the home tab instead of a blank page.
   useEffect(() => {
@@ -160,7 +226,18 @@ function Root() {
   }, [start]);
 
   async function handleGoalSaved(goal: { dailyCalorieTarget: number; type: GoalType }) {
-    const saved = await saveGoal(goal);
+    // A manual calorie edit keeps the plan's steps and rationale and rescales its macros.
+    const current = dashboard?.goal;
+    const scale = current ? goal.dailyCalorieTarget / current.dailyCalorieTarget : 1;
+    const macros = current?.macroTargets;
+    const saved = await saveGoal({
+      ...goal,
+      carbsTargetGrams: macros ? Math.round(macros.carbsGrams * scale) : null,
+      dailyStepsTarget: current?.dailyStepsTarget ?? null,
+      fatTargetGrams: macros ? Math.round(macros.fatGrams * scale) : null,
+      planRationale: current?.planRationale ?? null,
+      proteinTargetGrams: macros ? Math.round(macros.proteinGrams * scale) : null,
+    });
     setTarget(saved.dailyCalorieTarget);
     setEditingGoal(null);
     setRoute('home');
@@ -168,6 +245,44 @@ function Root() {
     loadInsight();
     bumpHistory();
   }
+
+  function handleOnboardingComplete(result: { goal: { dailyCalorieTarget: number }; profile: Profile }) {
+    setProfile(result.profile);
+    setTarget(result.goal.dailyCalorieTarget);
+    setViewing(null);
+    setRoute('home');
+    flash('Your plan is ready');
+    loadDashboard(true);
+    loadInsight();
+    bumpHistory();
+  }
+
+  const openRecalculate = () => {
+    setOnboarding({ cancelable: true, startAt: 'goal' });
+    setRoute('onboarding');
+  };
+
+  const resetHealthFlip = useCallback(() => {
+    Alert.alert('Reset healthFlip?', 'This deletes your goals, meals, profile, memories, and plans, then returns you to first-run setup.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reset everything',
+        style: 'destructive',
+        onPress: () => {
+          resetGuest().then(() => {
+            clearAllReminders().catch(() => undefined);
+            updateWidget(null).catch(() => undefined);
+            setDashboard(null);
+            setProfile(null);
+            setViewing(null);
+            setInsight(null);
+            setRoute('onboarding');
+            setOnboarding({ cancelable: false, startAt: 'about' });
+          }).catch(() => Alert.alert('Reset failed', 'Check your connection and try again.'));
+        },
+      },
+    ]);
+  }, []);
 
   function handleMealSaved(types: MealTypes, mode: 'add' | 'edit') {
     setMealTypes(types);
@@ -180,12 +295,37 @@ function Root() {
     bumpHistory();
   }
 
-  function handleAssistantMealLogged() {
-    setRoute(assistantReturnRoute);
-    flash('Kimbo added the meal to your day');
+  // Flip stays open after logging (it confirms in conversation), so only refresh the data behind it.
+  function handleFlipMealLogged() {
     loadDashboard(false);
     loadInsight();
     bumpHistory();
+  }
+
+  const openFlip = (origin: RevealOrigin = { x: window.width / 2, y: window.height - 80 }) => setFlip({ instant: false, open: true, origin });
+  const closeFlip = () => setFlip(current => ({ ...current, instant: false, open: false }));
+
+  function openTextFromFlip() {
+    setFlip(current => ({ ...current, instant: true, open: false }));
+    openAssistant();
+  }
+
+  // The meal chat stays open after logging so you can add more; only refresh the data behind it.
+  function handleAssistantMealLogged() {
+    setViewing(null);
+    loadDashboard(false);
+    loadInsight();
+    bumpHistory();
+  }
+
+  function closeAssistant(logged: number) {
+    setRoute(assistantReturnRoute);
+    if (logged) flash(logged === 1 ? 'Meal logged. Nice one!' : `${logged} meals logged. Nice one!`);
+  }
+
+  function pickFromList(type: MealType) {
+    setRoute(assistantReturnRoute);
+    openAdd(type);
   }
 
   async function handleDelete() {
@@ -200,8 +340,89 @@ function Root() {
 
   const openAdd = (type: MealType = typeForHour()) => setSheet({ open: true, mode: 'add', type, key: Date.now() });
 
+  function openReports(reportId?: string) {
+    setReportsView({ key: Date.now(), reportId: reportId ?? null, returnTo: activeTab ?? 'home' });
+    setRoute('reports');
+  }
+
+  // Water: quick logging updates the card straight away; the dashboard refresh follows.
+  async function changeWater(action: () => Promise<{ consumedMl: number }>) {
+    if (waterBusy) return;
+    setWaterBusy(true);
+    try {
+      const water = await action();
+      setDashboard(current => (current?.water ? { ...current, water: { ...current.water, consumedMl: water.consumedMl } } : current));
+    } catch {
+      flash('Couldn’t update water. Try again.');
+    } finally {
+      setWaterBusy(false);
+    }
+  }
+
+  async function applyReminders(targetMl: number | null, settings: ReminderSettings) {
+    setReminders(settings);
+    saveReminderSettings(settings).catch(() => undefined);
+    const allowed = await applyWaterReminders(targetMl, settings).catch(() => false);
+    if (!allowed && targetMl && settings.enabled) {
+      Alert.alert('Reminders are off', 'Allow notifications for healthFlip in Settings to get water reminders.', [
+        { style: 'cancel', text: 'Not now' },
+        { onPress: () => { Linking.openSettings().catch(() => undefined); }, text: 'Open Settings' },
+      ]);
+    }
+  }
+
+  async function setWaterGoal(targetMl: number | null) {
+    try {
+      await setWaterTarget(targetMl);
+      await applyReminders(targetMl, reminders);
+      loadDashboard(false);
+    } catch {
+      flash('Couldn’t update your water goal. Try again.');
+    }
+  }
+
+  function waterSettings() {
+    const targetMl = dashboard?.water?.targetMl ?? null;
+    const options: { label: string; run: () => void; destructive?: boolean }[] = [
+      ...(reminders.enabled
+        ? ([1, 2, 3] as const).filter(hours => reminders.testSeconds || hours !== reminders.intervalHours).map(hours => ({ label: `Remind me every ${hours} h`, run: () => { applyReminders(targetMl, { ...reminders, intervalHours: hours, testSeconds: null }).catch(() => undefined); } }))
+        : []),
+      // Quick checks for testing: 10 reminders, 30 s or 1 min apart.
+      ...([30, 60] as const).filter(seconds => seconds !== reminders.testSeconds).map(seconds => ({ label: `Test: every ${seconds === 30 ? '30 s' : '1 min'}`, run: () => { applyReminders(targetMl, { ...reminders, enabled: true, testSeconds: seconds }).catch(() => undefined); } })),
+      { label: reminders.enabled ? 'Turn reminders off' : 'Turn reminders on', run: () => { applyReminders(targetMl, { ...reminders, enabled: !reminders.enabled }).catch(() => undefined); } },
+      ...[2000, 2500, 3000, 3500].filter(ml => ml !== targetMl).map(ml => ({ label: `Change goal to ${ml / 1000} L`, run: () => { setWaterGoal(ml).catch(() => undefined); } })),
+      { destructive: true, label: 'Remove water goal', run: () => { setWaterGoal(null).catch(() => undefined); } },
+    ];
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { cancelButtonIndex: options.length, destructiveButtonIndex: options.findIndex(option => option.destructive), options: [...options.map(option => option.label), 'Cancel'], title: `Reminders ${!reminders.enabled ? 'are off' : reminders.testSeconds ? `testing: every ${reminders.testSeconds === 30 ? '30 s' : '1 min'} (${10} times)` : `every ${reminders.intervalHours} h, ${reminders.startHour}:00–${reminders.endHour}:00`}` },
+        index => options[index]?.run(),
+      );
+    } else {
+      Alert.alert('Water', undefined, [...options.slice(-3).map(option => ({ onPress: option.run, style: option.destructive ? 'destructive' as const : 'default' as const, text: option.label })), { style: 'cancel', text: 'Cancel' }]);
+    }
+  }
+
+  const homeHealth: HomeHealthActions = {
+    nextReminder: dashboard?.water?.targetMl ? nextReminder(reminders) : null,
+    onAddWater: ml => { changeWater(() => logWater(ml)).catch(() => undefined); },
+    onOpenReports: openReports,
+    onUndoWater: () => { changeWater(() => undoWater()).catch(() => undefined); },
+    onWaterSettings: waterSettings,
+    waterBusy,
+  };
+
   function openAssistant() {
+    setAssistantSeed(null);
     setAssistantReturnRoute(activeTab ?? 'home');
+    setRoute('assistant');
+  }
+
+  // "Pick from list" found nothing: close the form and let Flip estimate what was searched.
+  function askFlipAbout(query: string, type: MealType) {
+    setSheet(current => ({ ...current, open: false }));
+    setAssistantSeed({ query, type });
+    if (route !== 'assistant') setAssistantReturnRoute(activeTab ?? 'home');
     setRoute('assistant');
   }
 
@@ -219,6 +440,42 @@ function Root() {
   return (
     <View style={[ui.flex, { backgroundColor: route === 'boot' ? colors.lime : colors.bg }]}>
       {route === 'boot' ? <BootScreen state={boot} onRetry={start} /> : null}
+      {route === 'onboarding' ? (
+        <OnboardingChat
+          key={`${onboarding.startAt}-${onboarding.cancelable}`}
+          initialProfile={profile}
+          initialGoalType={dashboard?.goal?.type}
+          startAt={onboarding.startAt}
+          onCancel={onboarding.cancelable ? () => setRoute('home') : undefined}
+          onComplete={handleOnboardingComplete}
+        />
+      ) : null}
+      {route === 'profile' ? (
+        <ProfileScreen
+          profile={profile}
+          onBack={() => setRoute('home')}
+          onProfileSaved={setProfile}
+          onRecalculate={openRecalculate}
+          onReset={resetHealthFlip}
+          onOpenReports={() => openReports()}
+        />
+      ) : null}
+      {route === 'reports' ? (
+        <ReportsScreen
+          key={reportsView.key}
+          initialReportId={reportsView.reportId}
+          onClose={() => setRoute(reportsView.returnTo)}
+          onAskFlip={() => openFlip()}
+          onMakePlan={() => { setPlansSignal(current => current + 1); setRoute('plans'); }}
+          onDeleted={() => loadDashboard(false)}
+          onSaved={(_report, waterMl) => {
+            flash('Report saved. Flip will use it for your meals.');
+            if (waterMl) applyReminders(waterMl, reminders).catch(() => undefined);
+            loadDashboard(false);
+            loadInsight();
+          }}
+        />
+      ) : null}
       {route === 'goal' ? <GoalSetup initial={editingGoal ?? undefined} editing={!!editingGoal} onCancel={() => { setEditingGoal(null); setRoute('home'); }} onSave={handleGoalSaved} /> : null}
       {activeTab ? (
         <>
@@ -231,7 +488,8 @@ function Root() {
               target={dailyTarget}
               mealTypes={mealTypes}
               viewing={viewing}
-              onAdd={openAdd}
+              onLogMeal={openAssistant}
+              health={homeHealth}
               onOpenMeal={meal => {
                 setSelectedId(meal.id);
                 setRoute('detail');
@@ -240,6 +498,9 @@ function Root() {
               onRefresh={() => loadDashboard(false)}
               onRetry={() => loadDashboard(true)}
               onInsightRetry={loadInsight}
+              userName={profile ? firstName(profile.name) : null}
+              onOpenProfile={() => setRoute('profile')}
+              onRecalculate={openRecalculate}
               onEditGoal={() => {
                 const goal = dashboard?.goal;
                 setEditingGoal(goal ? { dailyCalorieTarget: goal.dailyCalorieTarget, type: goal.type } : null);
@@ -254,7 +515,7 @@ function Root() {
               mealTypes={mealTypes}
               version={historyVersion}
               popSignal={progressPop}
-              onLogMeal={() => openAdd()}
+              onLogMeal={openAssistant}
               onSetGoal={() => {
                 const goal = dashboard?.goal;
                 setEditingGoal(goal ? { dailyCalorieTarget: goal.dailyCalorieTarget, type: goal.type } : null);
@@ -267,18 +528,29 @@ function Root() {
               }}
             />
           </View>
-          <View style={[ui.flex, activeTab === 'rewards' ? null : screen.hidden]}>
-            <RewardsScreen onHome={() => openTab('home')} />
+          <View style={[ui.flex, activeTab === 'plans' ? null : screen.hidden]}>
+            <PlansScreen version={plansVersion} newDietSignal={plansSignal} latestReport={dashboard?.latestReport ?? null} />
           </View>
           <View style={[ui.flex, activeTab === 'tips' ? null : screen.hidden]}>
             <TipsScreen popSignal={tipsPop} />
           </View>
-          <BottomNav activeTab={activeTab} onNavigate={openTab} onAdd={() => openAdd()} />
-          <AssistantFab bottom={Math.max(insets.bottom, 12) + 78} onPress={openAssistant} />
+          <BottomNav activeTab={activeTab} onNavigate={openTab} onAdd={openAssistant} />
+          {activeTab === 'home' && !viewing && !sheet.open && !flip.open ? <AskFlipPill bottom={Math.max(insets.bottom, 12) + 78} onPress={openFlip} /> : null}
         </>
       ) : null}
-      {route === 'assistant' ? <AssistantScreen mealType={typeForHour()} onClose={() => setRoute(assistantReturnRoute)} onMealLogged={handleAssistantMealLogged} onOpenLiveVoice={() => setRoute('voice')} /> : null}
-      {route === 'voice' ? <VoiceConversationScreen mealType={typeForHour()} onClose={() => setRoute('assistant')} onMealLogged={handleAssistantMealLogged} /> : null}
+      {route === 'assistant' ? (
+        <AssistantScreen
+          key={assistantSeed ? `seed-${assistantSeed.query}` : 'chat'}
+          initialQuery={assistantSeed?.query}
+          initialType={assistantSeed?.type ?? typeForHour()}
+          remainingCalories={dashboard?.remainingCalories ?? null}
+          userName={profile ? firstName(profile.name) : undefined}
+          onClose={closeAssistant}
+          onMealLogged={handleAssistantMealLogged}
+          onOpenLiveVoice={() => openFlip()}
+          onPickFromList={pickFromList}
+        />
+      ) : null}
       {route === 'detail' && selected ? (
         <MealDetail
           meal={selected}
@@ -299,8 +571,21 @@ function Root() {
         meal={sheet.mode === 'edit' ? selected : null}
         onClose={() => setSheet(current => ({ ...current, open: false }))}
         onSaved={handleMealSaved}
+        onAskFlip={askFlipAbout}
       />
       <DeleteDialog key={`delete-${deleteDialog.key}`} visible={deleteDialog.open} meal={selected} onCancel={() => setDeleteDialog(current => ({ ...current, open: false }))} onDelete={handleDelete} />
+
+      <FlipReveal open={flip.open} instantClose={flip.instant} origin={flip.origin}>
+        <VoiceConversationScreen
+          mealType={typeForHour()}
+          remainingCalories={dashboard?.remainingCalories ?? null}
+          userName={profile ? firstName(profile.name) : undefined}
+          onClose={closeFlip}
+          onMealLogged={handleFlipMealLogged}
+          onOpenText={openTextFromFlip}
+          onPlanSaved={() => setPlansVersion(current => current + 1)}
+        />
+      </FlipReveal>
 
       <View pointerEvents="none" style={[screen.toastSlot, { top: insets.top + 4 }]}>
         <Toast message={toast} />
@@ -434,27 +719,24 @@ function Greeting({ children }: { children?: React.ReactNode }) {
 
 // ---------- Page 2 · Today dashboard ----------
 
-function DashboardScreen({ dashboard, state, insight, insightState, target, mealTypes, viewing, onAdd, onOpenMeal, onBackToToday, onRefresh, onRetry, onInsightRetry, onEditGoal }: { dashboard: Dashboard | null; state: DashState; insight: DailyInsight | null; insightState: 'idle' | 'loading' | 'ready' | 'error'; target: number; mealTypes: MealTypes; viewing: Dashboard | null; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void; onBackToToday: () => void; onRefresh: () => void; onRetry: () => void; onInsightRetry: () => void; onEditGoal: () => void }) {
+const DETAILS_KEY = 'healthflip.homeDetails';
+
+function DashboardScreen({ dashboard, state, insight, insightState, target, mealTypes, viewing, userName, health, onLogMeal, onOpenMeal, onBackToToday, onRefresh, onRetry, onInsightRetry, onEditGoal, onOpenProfile, onRecalculate }: { dashboard: Dashboard | null; state: DashState; insight: DailyInsight | null; insightState: 'idle' | 'loading' | 'ready' | 'error'; target: number; mealTypes: MealTypes; viewing: Dashboard | null; userName: string | null; health: HomeHealthActions; onLogMeal: () => void; onOpenMeal: (meal: Meal) => void; onBackToToday: () => void; onRefresh: () => void; onRetry: () => void; onInsightRetry: () => void; onEditGoal: () => void; onOpenProfile: () => void; onRecalculate: () => void }) {
   const insets = useSafeAreaInsets();
   const now = viewing ? new Date(`${viewing.date}T12:00:00`) : new Date();
-  const busy = !viewing && (state === 'loading' || state === 'refreshing');
   const hasContent = !!dashboard && (!!viewing || state === 'ready' || state === 'refreshing' || state === 'fail');
   const dateLabel = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <ScrollView contentContainerStyle={[screen.dash, { paddingTop: insets.top + 8 }]} refreshControl={!viewing && hasContent ? <RefreshControl refreshing={false} onRefresh={onRefresh} /> : undefined}>
+    <ScrollView contentContainerStyle={[screen.dash, { paddingTop: insets.top + 8 }]} refreshControl={!viewing && hasContent ? <RefreshControl refreshing={state === 'refreshing'} onRefresh={onRefresh} /> : undefined}>
       <View style={screen.greeting}>
-        {viewing ? <RoundIconButton name="arrowLeft" label="Back" iconSize={20} stroke={2.6} onPress={onBackToToday} /> : <IconTile name="user" bg={colors.pale} fg={colors.greenDark} size={44} radius={22} />}
+        {viewing
+          ? <RoundIconButton name="arrowLeft" label="Back" iconSize={20} stroke={2.6} onPress={onBackToToday} />
+          : <RoundIconButton name="user" label="Your profile and memories" bg={colors.pale} onPress={onOpenProfile} />}
         <View style={screen.grow}>
-          <Text style={screen.small}>{viewing ? 'Past day' : 'Hello there!'}</Text>
+          <Text style={screen.small}>{viewing ? 'Past day' : userName ? `Hi, ${userName}!` : 'Hello there!'}</Text>
           <Text style={screen.headline}>{dateLabel}</Text>
         </View>
-        {viewing ? null : (
-          <View style={screen.row8}>
-            <RoundIconButton name="pencil" label="Edit goal" size={42} iconSize={18} stroke={2.4} onPress={onEditGoal} />
-            <RoundIconButton name="refresh" label="Refresh" busy={busy} onPress={onRefresh} />
-          </View>
-        )}
       </View>
 
       {!viewing && state === 'loading' ? <DashboardSkeleton /> : null}
@@ -463,14 +745,8 @@ function DashboardScreen({ dashboard, state, insight, insightState, target, meal
       ) : null}
       {hasContent && dashboard ? (
         <>
-          {!viewing && state === 'refreshing' ? (
-            <View style={screen.refreshChip}>
-              <Spinner color={colors.greenDark} />
-              <Text style={screen.refreshText}>Refreshing…</Text>
-            </View>
-          ) : null}
           {!viewing && state === 'fail' ? <Banner message="Couldn't refresh. Showing your last update." onRetry={onRefresh} /> : null}
-          <DashboardContent dashboard={dashboard} insight={insight} insightState={insightState} target={target} mealTypes={mealTypes} now={now} viewing={!!viewing} onAdd={onAdd} onOpenMeal={onOpenMeal} onInsightRetry={onInsightRetry} />
+          <DashboardContent dashboard={dashboard} health={health} insight={insight} insightState={insightState} target={target} mealTypes={mealTypes} viewing={!!viewing} onLogMeal={onLogMeal} onOpenMeal={onOpenMeal} onInsightRetry={onInsightRetry} onEditGoal={onEditGoal} onRecalculate={onRecalculate} />
         </>
       ) : null}
     </ScrollView>
@@ -481,8 +757,6 @@ function DashboardSkeleton() {
   return (
     <View style={screen.gap14}>
       <View style={[screen.skeleton, screen.skeletonHero]} />
-      <View style={[screen.skeleton, screen.skeletonWeek]} />
-      <View style={screen.skeleton} />
       <View style={screen.skeleton} />
       <View style={screen.skeletonStatus}>
         <Spinner color={colors.muted} />
@@ -492,57 +766,90 @@ function DashboardSkeleton() {
   );
 }
 
-function DashboardContent({ dashboard, insight, insightState, target, mealTypes, now, viewing, onAdd, onOpenMeal, onInsightRetry }: { dashboard: Dashboard; insight: DailyInsight | null; insightState: 'idle' | 'loading' | 'ready' | 'error'; target: number; mealTypes: MealTypes; now: Date; viewing: boolean; onAdd: (type?: MealType) => void; onOpenMeal: (meal: Meal) => void; onInsightRetry: () => void }) {
+function DashboardContent({ dashboard, health, insight, insightState, target, mealTypes, viewing, onLogMeal, onOpenMeal, onInsightRetry, onEditGoal, onRecalculate }: { dashboard: Dashboard; health: HomeHealthActions; insight: DailyInsight | null; insightState: 'idle' | 'loading' | 'ready' | 'error'; target: number; mealTypes: MealTypes; viewing: boolean; onLogMeal: () => void; onOpenMeal: (meal: Meal) => void; onInsightRetry: () => void; onEditGoal: () => void; onRecalculate: () => void }) {
   const meals = [...dashboard.meals].sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
   const consumed = dashboard.totalCalories;
   const remaining = target - consumed;
+  const [details, setDetails] = useState(false);
+
+  // Remember whether Details was open; storage can be unavailable, so failures are ignored.
+  useEffect(() => {
+    AsyncStorage.getItem(DETAILS_KEY).then(value => setDetails(value === '1')).catch(() => undefined);
+  }, []);
+  const toggleDetails = () => {
+    setDetails(open => {
+      AsyncStorage.setItem(DETAILS_KEY, open ? '0' : '1').catch(() => undefined);
+      return !open;
+    });
+  };
+
   const sum = (key: 'proteinGrams' | 'carbsGrams' | 'fatGrams') => meals.reduce((total, meal) => total + (meal[key] ?? 0), 0);
-  const macros = macroTargets(target);
-  const kicker = viewing
-    ? remaining < 0 ? 'Over target that day' : consumed === 0 ? 'Nothing logged that day' : 'Logged that day'
-    : remaining < 0 ? 'A little over today' : consumed === 0 ? 'Fresh start today' : "Today's intake";
-  const countLabel = viewing
-    ? meals.length === 1 ? '1 meal' : `${meals.length} meals`
-    : !meals.length ? 'No meals yet' : meals.length === 1 ? '1 meal today' : `${meals.length} meals today`;
-  const emptyLabel = remaining > 0 ? `Nothing yet · ${formatNumber(remaining)} kcal to play with` : 'Nothing yet';
+  // Plan macro targets when the goal has them; otherwise the fixed 30/40/30 split.
+  const planMacros = dashboard.goal?.macroTargets;
+  const macros = planMacros ? { c: planMacros.carbsGrams, f: planMacros.fatGrams, p: planMacros.proteinGrams } : macroTargets(target);
+  const over = remaining < 0;
 
   return (
     <>
       <View style={screen.hero}>
         <View style={screen.heroTop}>
-          <View style={[screen.grow, screen.gap6]}>
-            <View style={screen.kicker}>
-              <IconTile name="flame" bg="rgba(255,255,255,.65)" fg={colors.greenDark} size={26} radius={13} iconSize={14} stroke={2.6} />
-              <Text style={screen.kickerText}>{kicker}</Text>
+          <View style={[screen.grow, screen.gap10]}>
+            <View style={screen.gap2}>
+              <Text style={screen.heroLabel}>Eaten</Text>
+              <Text style={screen.heroNumber}>
+                {formatNumber(consumed)} <Text style={screen.heroUnit}>kcal</Text>
+              </Text>
             </View>
-            <Text style={screen.heroNumber}>
-              {formatNumber(consumed)} <Text style={screen.heroUnit}>kcal</Text>
-            </Text>
-            <Text style={screen.heroSub}>
-              of {formatNumber(target)} kcal · {goalLabel(dashboard.goal?.type)}
-            </Text>
+            <View style={screen.gap2}>
+              <Text style={screen.heroLabel}>{over ? 'Over by' : 'Left'}</Text>
+              <Text style={[screen.heroLeft, over && { color: colors.overText }]}>
+                {formatNumber(Math.abs(remaining))} <Text style={screen.heroUnitSmall}>kcal</Text>
+              </Text>
+            </View>
           </View>
           <ProgressRing consumed={consumed} target={target} />
         </View>
-        <View style={screen.row8}>
-          <MacroBar label="Protein" value={sum('proteinGrams')} target={macros.p} color={colors.protein} track={colors.proteinBg} />
-          <MacroBar label="Carbs" value={sum('carbsGrams')} target={macros.c} color={colors.carbs} track={colors.carbsBg} />
-          <MacroBar label="Fat" value={sum('fatGrams')} target={macros.f} color={colors.fat} track={colors.fatBg} />
-        </View>
+
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: details }} accessibilityLabel={details ? 'Hide details' : 'Show details'} onPress={toggleDetails} style={screen.detailsToggle}>
+          <Text style={screen.detailsText}>{details ? 'Less' : 'Details'}</Text>
+          <View style={details ? screen.flipped : null}><Icon name="chevronDown" size={16} color={colors.greenDark} stroke={2.8} /></View>
+        </Pressable>
+
+        {details ? (
+          <View style={screen.gap14}>
+            <Text style={screen.heroSub}>Goal: {formatNumber(target)} kcal · {goalLabel(dashboard.goal?.type)}</Text>
+            <View style={screen.row8}>
+              <MacroBar label="Protein" value={sum('proteinGrams')} target={macros.p} color={colors.protein} track={colors.proteinBg} />
+              <MacroBar label="Carbs" value={sum('carbsGrams')} target={macros.c} color={colors.carbs} track={colors.carbsBg} />
+              <MacroBar label="Fat" value={sum('fatGrams')} target={macros.f} color={colors.fat} track={colors.fatBg} />
+            </View>
+            {!viewing ? <FlipNudge insight={insight} state={insightState} onRetry={onInsightRetry} /> : null}
+            {!viewing ? (
+              <View style={screen.detailsLinks}>
+                <Pressable accessibilityRole="button" hitSlop={8} onPress={onEditGoal}><Text style={screen.planLink}>Edit goal</Text></Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Recalculate my plan" hitSlop={8} onPress={onRecalculate}><Text style={screen.planLink}>Recalculate plan</Text></Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
-      {!viewing ? <KimboInsightCard insight={insight} state={insightState} onRetry={onInsightRetry} /> : null}
+      {!viewing && dashboard.water?.targetMl ? <WaterCard water={dashboard.water} actions={health} /> : null}
+      {!viewing ? <HealthRow report={dashboard.latestReport} onOpen={health.onOpenReports} /> : null}
 
-      <WeekStrip date={dashboard.date} now={now} countLabel={countLabel} />
+      <View style={screen.mealsHeader}>
+        <Text style={screen.sectionTitle}>{viewing ? 'Meals' : 'Today’s meals'}</Text>
+        {meals.length ? <Text style={screen.countPill}>{meals.length === 1 ? '1 meal' : `${meals.length} meals`}</Text> : null}
+      </View>
 
       {!meals.length && !viewing ? (
         <Card style={screen.emptyCardLocal}>
           <IconTile name="utensils" bg={colors.carbsBg} fg="#c27a12" />
           <View style={ui.gap4}>
-            <Text style={ui.emptyTitle}>No meals logged yet</Text>
-            <Text style={ui.body14}>Your full {formatNumber(target)} kcal is still on the table. Log your first meal and we'll keep count.</Text>
+            <Text style={ui.emptyTitle}>No meals yet</Text>
+            <Text style={ui.body14}>{remaining > 0 ? `${formatNumber(remaining)} kcal to go. ` : ''}Tell Flip what you ate, or snap a photo.</Text>
           </View>
-          <PillButton title="Log a meal" icon="plus" height={50} onPress={() => onAdd()} />
+          <PillButton title="Log with Flip" icon="plus" height={50} onPress={onLogMeal} />
         </Card>
       ) : !meals.length && viewing ? (
         <Card style={ui.gap4}>
@@ -550,79 +857,54 @@ function DashboardContent({ dashboard, insight, insightState, target, mealTypes,
           <Text style={ui.body14}>Days without meals are not counted in your progress averages.</Text>
         </Card>
       ) : (
-        MEAL_TYPES.map(({ id, label }) => (
-          <MealGroupCard
-            key={id}
-            type={id}
-            label={label}
-            meals={meals.filter(meal => mealTypeOf(meal, mealTypes) === id)}
-            onOpenMeal={onOpenMeal}
-            onAdd={viewing ? undefined : () => onAdd(id)}
-            emptyLabel={emptyLabel}
-          />
-        ))
+        <Card style={screen.mealList}>
+          {meals.map(meal => {
+            const type = mealTypeOf(meal, mealTypes);
+            return (
+              <Pressable key={meal.id} accessibilityRole="button" onPress={() => onOpenMeal(meal)} style={({ pressed }) => [screen.mealRow, pressed && screen.mealRowPressed]}>
+                <MealTypeTile type={type} size={38} radius={12} iconSize={18} />
+                <View style={screen.grow}>
+                  <Text style={screen.mealName} numberOfLines={1}>{meal.name}</Text>
+                  <Text style={screen.mealMeta}>{formatTime(meal.loggedAt)} · {mealTypeLabel(type)}</Text>
+                </View>
+                <Text style={screen.mealKcal}>{formatNumber(meal.caloriesKcal ?? 0)} kcal</Text>
+                <Icon name="chevronRight" size={16} color={colors.faint} stroke={2.6} />
+              </Pressable>
+            );
+          })}
+        </Card>
       )}
     </>
   );
 }
 
-function KimboInsightCard({ insight, state, onRetry }: { insight: DailyInsight | null; state: 'idle' | 'loading' | 'ready' | 'error'; onRetry: () => void }) {
-  if (state === 'error') {
-    return <Banner message="Couldn't load today's wellness nudge." onRetry={onRetry} />;
-  }
-
+/** Flip's daily wellness nudge, shown inside the hero's Details. */
+function FlipNudge({ insight, state, onRetry }: { insight: DailyInsight | null; state: 'idle' | 'loading' | 'ready' | 'error'; onRetry: () => void }) {
   return (
-    <Card style={screen.insightCard}>
+    <View style={screen.nudge}>
       <View style={screen.rowCenter10}>
-        <IconTile name="leaf" bg={colors.limeBright} fg={colors.greenDark} size={40} radius={14} iconSize={20} />
-        <View style={screen.grow}>
-          <Text style={screen.insightTitle}>Kimbo's nudge</Text>
-          <Text style={screen.insightLabel}>Wellness insight</Text>
-        </View>
+        <IconTile name="leaf" bg={colors.limeBright} fg={colors.greenDark} size={30} radius={10} iconSize={15} />
+        <Text style={[screen.insightTitle, screen.grow]}>Flip's nudge</Text>
         {state === 'loading' ? <Spinner color={colors.greenDark} /> : null}
       </View>
       {state === 'loading' ? <Text style={screen.body14}>Finding something useful for today…</Text> : null}
+      {state === 'error' ? (
+        <Pressable accessibilityRole="button" onPress={onRetry}><Text style={screen.body14}>Couldn't load today's nudge. <Text style={screen.planLink}>Retry</Text></Text></Pressable>
+      ) : null}
       {state === 'ready' && insight ? (
         <View style={screen.gap6}>
           <Text style={screen.body14}>{insight.message}</Text>
           <Text style={screen.insightAction}>{insight.nextAction}</Text>
         </View>
       ) : null}
-    </Card>
-  );
-}
-
-function WeekStrip({ date, now, countLabel }: { date: string; now: Date; countLabel: string }) {
-  const today = new Date(`${date}T12:00:00`);
-  const sunday = new Date(today);
-  sunday.setDate(today.getDate() - today.getDay());
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const day = new Date(sunday);
-    day.setDate(sunday.getDate() + index);
-    return { key: index, letter: 'SMTWTFS'[index], number: String(day.getDate()).padStart(2, '0'), today: index === today.getDay() };
-  });
-  return (
-    <Card style={screen.week}>
-      <View style={screen.weekHeader}>
-        <Text style={screen.headline}>{now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</Text>
-        <Text style={screen.countPill}>{countLabel}</Text>
-      </View>
-      <View style={screen.row}>
-        {days.map(day => (
-          <View key={day.key} style={[screen.weekDay, day.today && screen.weekToday]}>
-            <Text style={[screen.weekText, day.today && screen.weekTodayText]}>{day.letter}</Text>
-            <Text style={[screen.weekText, screen.weekNum, day.today && screen.weekTodayText]}>{day.number}</Text>
-          </View>
-        ))}
-      </View>
-    </Card>
+    </View>
   );
 }
 
 const NAV_TABS: { tab: Tab; icon: IconName; label: string }[] = [
   { tab: 'home', icon: 'home', label: 'Home' },
   { tab: 'progress', icon: 'chart', label: 'Progress' },
-  { tab: 'rewards', icon: 'gift', label: 'Rewards' },
+  { tab: 'plans', icon: 'calendarCheck', label: 'Plans' },
   { tab: 'tips', icon: 'lightbulb', label: 'Tips' },
 ];
 
@@ -637,7 +919,7 @@ function BottomNav({ activeTab, onNavigate, onAdd }: { activeTab: Tab; onNavigat
           <Icon name="plus" size={26} stroke={2.8} />
         </Pressable>
       </View>
-      <NavItem {...NAV_TABS[2]} active={activeTab === 'rewards'} onPress={onNavigate} />
+      <NavItem {...NAV_TABS[2]} active={activeTab === 'plans'} onPress={onNavigate} />
       <NavItem {...NAV_TABS[3]} active={activeTab === 'tips'} onPress={onNavigate} />
     </View>
   );
@@ -725,9 +1007,10 @@ type FormErrors = Partial<Record<'name' | 'cal' | 'p' | 'c' | 'f', string>>;
 
 const toText = (value: number | null) => (value === null ? '' : String(value));
 
-function validate(form: MealForm, requirePreset: boolean): FormErrors {
+function validate(form: MealForm, requirePreset: boolean, savedFoods: Food[] = []): FormErrors {
   const errors: FormErrors = {};
-  if (!form.name.trim() || (requirePreset && !FOODS.some(food => food.name === form.name))) errors.name = 'Choose a food from the list.';
+  const listed = (food: Food) => food.name === form.name;
+  if (!form.name.trim() || (requirePreset && !FOODS.some(listed) && !savedFoods.some(listed))) errors.name = 'Choose a food from the list.';
   if (!form.cal.trim()) errors.cal = 'Add calories, even a rough guess.';
   else if (!isWholeNumber(form.cal)) errors.cal = 'Use a whole number, 0 or more.';
   (['p', 'c', 'f'] as const).forEach(key => {
@@ -736,7 +1019,7 @@ function validate(form: MealForm, requirePreset: boolean): FormErrors {
   return errors;
 }
 
-function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { visible: boolean; mode: 'add' | 'edit'; initialType: MealType; meal: Meal | null; onClose: () => void; onSaved: (types: MealTypes, mode: 'add' | 'edit') => void }) {
+function MealSheet({ visible, mode, initialType, meal, onClose, onSaved, onAskFlip }: { visible: boolean; mode: 'add' | 'edit'; initialType: MealType; meal: Meal | null; onClose: () => void; onSaved: (types: MealTypes, mode: 'add' | 'edit') => void; onAskFlip?: (query: string, type: MealType) => void }) {
   const insets = useSafeAreaInsets();
   const [form, setForm] = useState<MealForm>(() =>
     meal
@@ -745,7 +1028,23 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
   );
   const [errors, setErrors] = useState<FormErrors>({});
   const [status, setStatus] = useState<'idle' | 'saving' | 'fail'>('idle');
+  const [savedFoods, setSavedFoods] = useState<Food[]>([]);
+  // While the food list is open the sheet focuses on it: other fields and the footer step aside.
+  const [picking, setPicking] = useState(false);
+  const bodyRef = useRef<ScrollViewInstance>(null);
   const saving = status === 'saving';
+
+  useEffect(() => {
+    if (picking) bodyRef.current?.scrollTo({ animated: true, y: 0 });
+  }, [picking]);
+
+  // Meals confirmed from Flip estimates join the list; the built-in foods still work if this fails.
+  useEffect(() => {
+    if (!visible || mode !== 'add') return;
+    let live = true;
+    listFoods().then(foods => { if (live) setSavedFoods(foods.map(foodFromSaved)); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [visible, mode]);
 
   const update = (patch: Partial<MealForm>) => {
     setForm(current => ({ ...current, ...patch }));
@@ -758,7 +1057,7 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
 
   async function submit() {
     if (saving) return;
-    const nextErrors = validate(form, mode === 'add');
+    const nextErrors = validate(form, mode === 'add', savedFoods);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     const input: MealInput = { caloriesKcal: Number(form.cal), mealType: form.type, name: form.name.trim() };
@@ -795,54 +1094,58 @@ function MealSheet({ visible, mode, initialType, meal, onClose, onSaved }: { vis
         <Text style={screen.sheetTitle}>{mode === 'edit' ? 'Edit meal' : 'Log a meal'}</Text>
         <RoundIconButton name="close" label="Close" bg={colors.chip} size={38} iconSize={18} stroke={2.6} onPress={() => !saving && onClose()} />
       </View>
-      <ScrollView style={screen.sheetBody} contentContainerStyle={screen.sheetContent} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+      <ScrollView ref={bodyRef} style={screen.sheetBody} contentContainerStyle={screen.sheetContent} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
         <View style={screen.gap6}>
           <Text style={screen.label14}>Food</Text>
-          <FoodPicker value={form.name} error={!!errors.name} onPick={food => update({ name: food.name, cal: String(food.cal), p: String(food.p), c: String(food.c), f: String(food.f) })} />
+          <FoodPicker value={form.name} error={!!errors.name} savedFoods={savedFoods} onOpenChange={setPicking} onAskFlip={mode === 'add' && onAskFlip ? query => onAskFlip(query, form.type) : undefined} onPick={food => update({ name: food.name, cal: String(food.cal), p: String(food.p), c: String(food.c), f: String(food.f) })} />
           <FieldError message={errors.name} />
         </View>
-        <View style={screen.gap6}>
-          <Text style={screen.label14}>Which meal?</Text>
-          <View style={screen.row6}>
-            {MEAL_TYPES.map(({ id, label }) => {
-              const on = form.type === id;
-              return (
-                <Pressable key={id} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => update({ type: id })} style={[screen.chip, on && screen.chipOn]}>
-                  <Text style={[screen.chipText, on && screen.chipTextOn]}>{label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-        <View style={screen.gap6}>
-          <FieldLabel title="Calories" hint="Filled from the food, adjust for your portion" />
-          <InputShell error={!!errors.cal}>
-            <NumberInput accessibilityLabel="Calories" value={form.cal} onChangeText={cal => update({ cal })} placeholder="0" />
-            <Text style={screen.unitSmall}>kcal</Text>
-          </InputShell>
-          <FieldError message={errors.cal} />
-        </View>
-        <View style={screen.gap6}>
-          <FieldLabel title="Macros" hint="Optional" />
-          <View style={screen.row8}>
-            {macroField('p', 'Protein g')}
-            {macroField('c', 'Carbs g')}
-            {macroField('f', 'Fat g')}
-          </View>
-        </View>
-        <View style={screen.gap6}>
-          <FieldLabel title="Note" hint="Optional" />
-          <TextInput value={form.note} onChangeText={note => update({ note })} placeholder="Anything worth remembering?" placeholderTextColor={colors.faint} multiline style={screen.note} />
-        </View>
-        <View style={screen.loggedRow}>
-          <Icon name="clock" size={14} color={colors.muted2} />
-          <Text style={screen.mealTime}>{mode === 'edit' && meal ? `Logged at ${formatTime(meal.loggedAt)} · manual entry` : `Logging now, ${formatTime(Date.now())} · manual entry`}</Text>
-        </View>
+        {picking ? null : (
+          <>
+            <View style={screen.gap6}>
+              <Text style={screen.label14}>Which meal?</Text>
+              <View style={screen.row6}>
+                {MEAL_TYPES.map(({ id, label }) => {
+                  const on = form.type === id;
+                  return (
+                    <Pressable key={id} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => update({ type: id })} style={[screen.chip, on && screen.chipOn]}>
+                      <Text style={[screen.chipText, on && screen.chipTextOn]}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+            <View style={screen.gap6}>
+              <FieldLabel title="Calories" hint="Filled from the food, adjust for your portion" />
+              <InputShell error={!!errors.cal}>
+                <NumberInput accessibilityLabel="Calories" value={form.cal} onChangeText={cal => update({ cal })} placeholder="0" />
+                <Text style={screen.unitSmall}>kcal</Text>
+              </InputShell>
+              <FieldError message={errors.cal} />
+            </View>
+            <View style={screen.gap6}>
+              <FieldLabel title="Macros" hint="Optional" />
+              <View style={screen.row8}>
+                {macroField('p', 'Protein g')}
+                {macroField('c', 'Carbs g')}
+                {macroField('f', 'Fat g')}
+              </View>
+            </View>
+            <View style={screen.gap6}>
+              <FieldLabel title="Note" hint="Optional" />
+              <TextInput value={form.note} onChangeText={note => update({ note })} placeholder="Anything worth remembering?" placeholderTextColor={colors.faint} multiline style={screen.note} />
+            </View>
+            <View style={screen.loggedRow}>
+              <Icon name="clock" size={14} color={colors.muted2} />
+              <Text style={screen.mealTime}>{mode === 'edit' && meal ? `Logged at ${formatTime(meal.loggedAt)} · manual entry` : `Logging now, ${formatTime(Date.now())} · manual entry`}</Text>
+            </View>
+          </>
+        )}
       </ScrollView>
-      <View style={[screen.sheetFooter, { paddingBottom: Math.max(insets.bottom, 14) + 12 }]}>
+      {picking ? null : <View style={[screen.sheetFooter, { paddingBottom: Math.max(insets.bottom, 14) + 12 }]}>
         {status === 'fail' ? <Banner message="We couldn't save that. Your entries are still here, so just try again." /> : null}
         <PillButton title={status === 'fail' ? 'Retry' : mode === 'edit' ? 'Save changes' : 'Save meal'} busy={saving} busyLabel="Saving…" onPress={submit} />
-      </View>
+      </View>}
     </Overlay>
   );
 }
@@ -856,11 +1159,29 @@ function FieldLabel({ title, hint }: { title: string; hint: string }) {
   );
 }
 
-function FoodPicker({ value, error, onPick }: { value: string; error: boolean; onPick: (food: (typeof FOODS)[number]) => void }) {
+function FoodPicker({ value, error, savedFoods, onAskFlip, onOpenChange, onPick }: { value: string; error: boolean; savedFoods: Food[]; onAskFlip?: (query: string) => void; onOpenChange?: (open: boolean) => void; onPick: (food: Food) => void }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { onOpenChange?.(open); }, [onOpenChange, open]);
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
-  const foods = FOODS.filter(food => !q || food.name.toLowerCase().includes(q));
+  const matches = (food: Food) => !q || food.name.toLowerCase().includes(q) || (!!food.saved && food.serving.toLowerCase().includes(q));
+  const saved = savedFoods.filter(matches);
+  const savedNames = new Set(savedFoods.map(food => food.name.toLowerCase()));
+  const common = FOODS.filter(food => !savedNames.has(food.name.toLowerCase()) && matches(food));
+  const row = (food: Food) => {
+    const on = food.name === value;
+    return (
+      <Pressable key={`${food.saved ? 'saved' : 'common'}-${food.name}`} accessibilityRole="button" accessibilityLabel={food.name} onPress={() => { onPick(food); setOpen(false); setQuery(''); }} style={({ pressed }) => [screen.foodRow, (on || pressed) && { backgroundColor: on ? colors.selected : colors.bg }]}>
+        <View style={screen.grow}>
+          <Text style={[screen.mealName, on && screen.bold]} numberOfLines={1}>{food.name}</Text>
+          <Text style={[screen.mealTime, on && { color: colors.greenSoft }]} numberOfLines={1}>{food.serving}</Text>
+        </View>
+        {food.saved ? <Text style={screen.flipTag}>Flip</Text> : null}
+        <Text style={[screen.foodCal, on && screen.foodCalOn]}>{formatNumber(food.cal)} kcal</Text>
+        {on ? <Icon name="check" size={16} color={colors.greenMid} stroke={3} /> : null}
+      </Pressable>
+    );
+  };
   return (
     <>
       <InputShell error={error} style={screen.foodShell}>
@@ -874,7 +1195,7 @@ function FoodPicker({ value, error, onPick }: { value: string; error: boolean; o
           placeholderTextColor={value ? colors.ink : colors.faint}
           style={screen.foodInput}
         />
-        <Pressable accessibilityLabel="Toggle food list" onPress={() => { setOpen(!open); setQuery(''); }} style={screen.chevron} hitSlop={8}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Toggle food list" onPress={() => { setOpen(!open); setQuery(''); }} style={screen.chevron} hitSlop={8}>
           <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
             <Icon name="chevronDown" size={18} color={colors.muted} stroke={2.6} />
           </View>
@@ -883,28 +1204,28 @@ function FoodPicker({ value, error, onPick }: { value: string; error: boolean; o
       {open ? (
         <View style={screen.picker}>
           <ScrollView style={screen.pickerList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-            {foods.map(food => {
-              const on = food.name === value;
-              return (
-                <Pressable key={food.name} onPress={() => { onPick(food); setOpen(false); setQuery(''); }} style={({ pressed }) => [screen.foodRow, (on || pressed) && { backgroundColor: on ? colors.selected : colors.bg }]}>
-                  <View style={screen.grow}>
-                    <Text style={[screen.mealName, on && screen.bold]}>{food.name}</Text>
-                    <Text style={[screen.mealTime, on && { color: colors.greenSoft }]}>{food.serving}</Text>
-                  </View>
-                  <Text style={[screen.foodCal, on && screen.foodCalOn]}>{formatNumber(food.cal)} kcal</Text>
-                  {on ? <Icon name="check" size={16} color={colors.greenMid} stroke={3} /> : null}
-                </Pressable>
-              );
-            })}
-            {!foods.length ? <Text style={screen.noResults}>No foods match "{query}"</Text> : null}
+            {saved.length ? <Text style={screen.pickerSection}>Your meals</Text> : null}
+            {saved.map(row)}
+            {saved.length && common.length ? <Text style={screen.pickerSection}>Common foods</Text> : null}
+            {common.map(row)}
+            {!saved.length && !common.length ? (
+              <View style={screen.noResultsBox}>
+                <Text style={screen.noResults}>No foods match "{query.trim()}"</Text>
+                {onAskFlip && q.length >= 3 ? (
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Ask Flip about ${query.trim()}`} onPress={() => { setOpen(false); onAskFlip(query.trim()); }} style={({ pressed }) => [screen.askFlip, pressed && screen.askFlipPressed]}>
+                    <IconTile name="leaf" bg={colors.limeBright} fg={colors.greenDark} size={28} radius={10} iconSize={15} />
+                    <Text style={screen.askFlipText} numberOfLines={2}>Ask Flip to estimate “{query.trim()}”</Text>
+                    <Icon name="arrowRight" size={16} color={colors.greenDark} stroke={2.6} />
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
           </ScrollView>
         </View>
       ) : null}
     </>
   );
 }
-
-// ---------- Page 6 · Delete confirmation ----------
 
 function DeleteDialog({ visible, meal, onCancel, onDelete }: { visible: boolean; meal: Meal | null; onCancel: () => void; onDelete: () => Promise<void> }) {
   const [status, setStatus] = useState<'idle' | 'deleting' | 'fail'>('idle');
@@ -938,12 +1259,10 @@ function DeleteDialog({ visible, meal, onCancel, onDelete }: { visible: boolean;
 
 const screen = StyleSheet.create({
   grow: { flex: 1, gap: 2, minWidth: 0 },
-  row: { flexDirection: 'row' },
   row6: { flexDirection: 'row', gap: 6 },
   row8: { flexDirection: 'row', gap: 8 },
   row10: { flexDirection: 'row', gap: 10 },
   rowCenter10: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  rowCenter12: { alignItems: 'center', flexDirection: 'row', gap: 12 },
   gap4: { gap: 4 },
   gap6: { gap: 6 },
   gap8: { gap: 8 },
@@ -993,38 +1312,36 @@ const screen = StyleSheet.create({
   dashError: { marginTop: 60, paddingHorizontal: 22, paddingVertical: 28 },
   skeleton: { backgroundColor: '#eceee7', borderRadius: 24, height: 84 },
   skeletonHero: { backgroundColor: '#e6efd3', borderRadius: 28, height: 218 },
-  skeletonWeek: { height: 104 },
   skeletonStatus: { alignItems: 'center', flexDirection: 'row', gap: 10, justifyContent: 'center', paddingTop: 6 },
   skeletonText: { color: colors.muted, fontSize: 14, fontWeight: '600' },
-  refreshChip: { alignItems: 'center', alignSelf: 'center', backgroundColor: colors.pale, borderRadius: 99, flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 7 },
-  refreshText: { color: colors.greenDark, fontSize: 13, fontWeight: '600' },
-  insightCard: { backgroundColor: colors.white, gap: 12, padding: 16 },
+  planLink: { color: colors.greenText, fontSize: 14, fontWeight: '800' },
   insightTitle: { color: colors.ink, fontSize: 15, fontWeight: '800' },
-  insightLabel: { color: colors.muted2, fontSize: 12 },
   insightAction: { color: colors.greenDark, fontSize: 13, fontWeight: '700', lineHeight: 19 },
   hero: { backgroundColor: colors.lime, borderRadius: 28, gap: 16, padding: 20 },
   heroTop: { alignItems: 'center', flexDirection: 'row', gap: 14 },
-  kicker: { alignItems: 'center', flexDirection: 'row', gap: 6 },
   kickerText: { color: colors.greenDark, fontSize: 13, fontWeight: '600' },
   heroNumber: { color: colors.ink, fontSize: 34, fontWeight: '800', letterSpacing: -0.7, lineHeight: 38 },
   heroUnit: { color: colors.greenDark, fontSize: 15, fontWeight: '600', letterSpacing: 0 },
-  heroSub: { color: colors.greenDark, fontSize: 13 },
-  week: { paddingBottom: 12 },
-  weekHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  heroSub: { color: colors.greenDark, fontSize: 13, fontWeight: '600' },
+  heroLabel: { color: colors.greenDark, fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
+  heroLeft: { color: colors.greenDark, fontSize: 22, fontWeight: '800', letterSpacing: -0.4 },
+  heroUnitSmall: { color: colors.greenDark, fontSize: 13, fontWeight: '600', letterSpacing: 0 },
+  gap2: { gap: 2 },
+  detailsToggle: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,.6)', borderRadius: 99, flexDirection: 'row', gap: 4, paddingHorizontal: 12, paddingVertical: 6 },
+  detailsText: { color: colors.greenDark, fontSize: 13, fontWeight: '800' },
+  flipped: { transform: [{ rotate: '180deg' }] },
+  detailsLinks: { flexDirection: 'row', gap: 20 },
+  nudge: { backgroundColor: 'rgba(255,255,255,.7)', borderRadius: 18, gap: 8, padding: 12 },
   countPill: { backgroundColor: colors.pale, borderRadius: 99, color: colors.greenDark, fontSize: 12, fontWeight: '700', overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 4 },
-  weekDay: { alignItems: 'center', borderRadius: 99, flex: 1, gap: 6, paddingVertical: 8 },
-  weekToday: { backgroundColor: colors.limeBright },
-  weekText: { color: colors.faint, fontSize: 12 },
-  weekNum: { fontSize: 15 },
-  weekTodayText: { color: colors.ink, fontWeight: '700' },
-  emptyCard: { gap: 14, paddingHorizontal: 20, paddingVertical: 24 },
-  emptyTitle: { color: colors.ink, fontSize: 18, fontWeight: '800' },
-  emptyGroup: { alignItems: 'center', borderColor: colors.dashed, borderRadius: 24, borderStyle: 'dashed', borderWidth: 1.5, flexDirection: 'row', gap: 12, padding: 16 },
-  mealList: { gap: 2, paddingLeft: 46 },
-  mealRow: { alignItems: 'center', borderRadius: 14, flexDirection: 'row', gap: 10, paddingHorizontal: 10, paddingVertical: 8 },
-  mealName: { color: colors.ink, fontSize: 14, fontWeight: '600' },
+  mealList: { gap: 2, paddingHorizontal: 8, paddingVertical: 8 },
+  mealRow: { alignItems: 'center', borderRadius: 16, flexDirection: 'row', gap: 12, paddingHorizontal: 8, paddingVertical: 9 },
+  mealRowPressed: { backgroundColor: colors.bg },
+  mealName: { color: colors.ink, fontSize: 15, fontWeight: '700' },
+  mealMeta: { color: colors.muted2, fontSize: 12, marginTop: 2 },
+  mealKcal: { color: '#3f443a', fontSize: 14, fontWeight: '700' },
+  mealsHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
+  sectionTitle: { color: colors.ink, fontSize: 18, fontWeight: '800' },
   mealTime: { color: colors.muted2, fontSize: 12 },
-  mealCal: { color: '#3f443a', fontSize: 14, fontWeight: '600' },
   nav: { backgroundColor: colors.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, bottom: 0, boxShadow: '0 -4px 20px rgba(0,0,0,.05)', flexDirection: 'row', left: 0, paddingTop: 12, position: 'absolute', right: 0 },
   navItem: { alignItems: 'center', flex: 1, gap: 4 },
   navLabel: { color: colors.disabled, fontSize: 11 },
@@ -1059,10 +1376,17 @@ const screen = StyleSheet.create({
   foodInput: { color: colors.ink, flex: 1, fontSize: 16, fontWeight: '600', minWidth: 0, padding: 0 },
   chevron: { alignItems: 'center', height: 28, justifyContent: 'center', width: 28 },
   picker: { backgroundColor: colors.white, borderRadius: 18, boxShadow: '0 0 0 1.5px #e6eadc, 0 8px 18px rgba(28,31,26,.08)', marginTop: 2, padding: 6 },
-  pickerList: { maxHeight: 232 },
+  // Fits above the iPhone keyboard together with the sheet header and search field.
+  pickerList: { maxHeight: 250 },
   foodRow: { alignItems: 'center', borderRadius: 12, flexDirection: 'row', gap: 10, paddingHorizontal: 10, paddingVertical: 9 },
   foodCal: { color: '#3f443a', fontSize: 13, fontWeight: '600' },
   foodCalOn: { color: colors.greenDark, fontWeight: '700' },
+  pickerSection: { color: colors.muted2, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, paddingBottom: 2, paddingHorizontal: 10, paddingTop: 8, textTransform: 'uppercase' },
+  flipTag: { backgroundColor: colors.pale, borderRadius: 8, color: colors.greenDark, fontSize: 10, fontWeight: '800', overflow: 'hidden', paddingHorizontal: 6, paddingVertical: 2 },
+  noResultsBox: { gap: 4, paddingBottom: 6 },
+  askFlip: { alignItems: 'center', backgroundColor: colors.pale, borderRadius: 14, flexDirection: 'row', gap: 10, marginHorizontal: 4, paddingHorizontal: 10, paddingVertical: 9 },
+  askFlipPressed: { backgroundColor: colors.selected },
+  askFlipText: { color: colors.greenDark, flex: 1, fontSize: 14, fontWeight: '800' },
   noResults: { color: colors.muted, fontSize: 14, paddingHorizontal: 10, paddingVertical: 18, textAlign: 'center' },
   chip: { alignItems: 'center', backgroundColor: colors.chip, borderRadius: 99, flex: 1, height: 40, justifyContent: 'center' },
   chipOn: { backgroundColor: colors.ink },

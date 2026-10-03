@@ -9,21 +9,61 @@
 /* Begin PBXBuildFile section */
 		0C80B921A6F3F58F76C31292 /* libPods-healthFlip.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-healthFlip.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		2A5DF51FB806996FF83C4CD3 /* HealthFlipNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1660901C841DCE01EE66ACA4 /* HealthFlipNative.swift */; };
+		55170DE84A6859E6E7A169B2 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0EB3FB4DD76EB8D3CF1D36A5 /* SwiftUI.framework */; };
+		6E34E2898D022C2DBA276018 /* HealthFlipNative.m in Sources */ = {isa = PBXBuildFile; fileRef = BB4CFD1F1C843C82130B526D /* HealthFlipNative.m */; };
 		6FC82912180A5AE2B513E04D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
+		7012F9A3E525A3F2F91336F9 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D3311FEDA04D53AE7EA84108 /* Foundation.framework */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		AFB87DBE6044F39426D2AF85 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 75B1D050F459908172CE7167 /* WidgetKit.framework */; };
+		DC4EA59A28CFEF68388B16F9 /* HealthFlipWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3ED72585365826B124E8919 /* HealthFlipWidget.swift */; };
+		FE535AA58B9BC73FA83C4B57 /* HealthFlipWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6E36EF69DFA45209777F54DA /* HealthFlipWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		E1204748A4244491E2CAC2A0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9B5B1FFB6ECA6C8A3357C141;
+			remoteInfo = HealthFlipWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		ECF60F5792529E88A4EA2B8C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				FE535AA58B9BC73FA83C4B57 /* HealthFlipWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		0EB3FB4DD76EB8D3CF1D36A5 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		13B07F961A680F5B00A75B9A /* healthFlip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = healthFlip.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = healthFlip/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = healthFlip/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = healthFlip/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		1660901C841DCE01EE66ACA4 /* HealthFlipNative.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = healthFlip/HealthFlipNative.swift; sourceTree = "<group>"; };
 		3B4392A12AC88292D35C810B /* Pods-healthFlip.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-healthFlip.debug.xcconfig"; path = "Target Support Files/Pods-healthFlip/Pods-healthFlip.debug.xcconfig"; sourceTree = "<group>"; };
+		3D61A13DB4441ACE44EDCCB0 /* HealthFlipWidget.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = HealthFlipWidget.entitlements; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-healthFlip.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-healthFlip.release.xcconfig"; path = "Target Support Files/Pods-healthFlip/Pods-healthFlip.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-healthFlip.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-healthFlip.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		61B4FECF640DB8395279CB39 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		6E36EF69DFA45209777F54DA /* HealthFlipWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HealthFlipWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		75B1D050F459908172CE7167 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = healthFlip/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = healthFlip/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		A3ED72585365826B124E8919 /* HealthFlipWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HealthFlipWidget.swift; sourceTree = "<group>"; };
+		BB4CFD1F1C843C82130B526D /* HealthFlipNative.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = healthFlip/HealthFlipNative.m; sourceTree = "<group>"; };
+		D3311FEDA04D53AE7EA84108 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -33,6 +73,16 @@
 			buildActionMask = 2147483647;
 			files = (
 				0C80B921A6F3F58F76C31292 /* libPods-healthFlip.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		79E525E44BBAF3183AE33C1A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7012F9A3E525A3F2F91336F9 /* Foundation.framework in Frameworks */,
+				AFB87DBE6044F39426D2AF85 /* WidgetKit.framework in Frameworks */,
+				55170DE84A6859E6E7A169B2 /* SwiftUI.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -47,8 +97,18 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				1660901C841DCE01EE66ACA4 /* HealthFlipNative.swift */,
+				BB4CFD1F1C843C82130B526D /* HealthFlipNative.m */,
 			);
 			name = healthFlip;
+			sourceTree = "<group>";
+		};
+		2772521D26F545B9921BF6D2 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				D3311FEDA04D53AE7EA84108 /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
@@ -56,8 +116,22 @@
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				5DCACB8F33CDC322A6C60F78 /* libPods-healthFlip.a */,
+				2772521D26F545B9921BF6D2 /* iOS */,
+				75B1D050F459908172CE7167 /* WidgetKit.framework */,
+				0EB3FB4DD76EB8D3CF1D36A5 /* SwiftUI.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		4FF4DFAB93B23579EEB8F373 /* HealthFlipWidget */ = {
+			isa = PBXGroup;
+			children = (
+				A3ED72585365826B124E8919 /* HealthFlipWidget.swift */,
+				61B4FECF640DB8395279CB39 /* Info.plist */,
+				3D61A13DB4441ACE44EDCCB0 /* HealthFlipWidget.entitlements */,
+			);
+			name = HealthFlipWidget;
+			path = HealthFlipWidget;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -75,6 +149,7 @@
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
+				4FF4DFAB93B23579EEB8F373 /* HealthFlipWidget */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -85,6 +160,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* healthFlip.app */,
+				6E36EF69DFA45209777F54DA /* HealthFlipWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -112,15 +188,34 @@
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
+				ECF60F5792529E88A4EA2B8C /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				2A73B2F31ED73FEA2945C2FB /* PBXTargetDependency */,
 			);
 			name = healthFlip;
 			productName = healthFlip;
 			productReference = 13B07F961A680F5B00A75B9A /* healthFlip.app */;
 			productType = "com.apple.product-type.application";
+		};
+		9B5B1FFB6ECA6C8A3357C141 /* HealthFlipWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0485DA0358F092646B90E3E7 /* Build configuration list for PBXNativeTarget "HealthFlipWidget" */;
+			buildPhases = (
+				204E4CC21FDF44AFBB9A939F /* Sources */,
+				79E525E44BBAF3183AE33C1A /* Frameworks */,
+				C43FACA80FDF92C0FA6B388E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HealthFlipWidget;
+			productName = HealthFlipWidget;
+			productReference = 6E36EF69DFA45209777F54DA /* HealthFlipWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -133,6 +228,10 @@
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1120;
+					};
+					9B5B1FFB6ECA6C8A3357C141 = {
+						CreatedOnToolsVersion = 16.0;
+						DevelopmentTeam = 4SJP58N7W5;
 					};
 				};
 			};
@@ -150,6 +249,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* healthFlip */,
+				9B5B1FFB6ECA6C8A3357C141 /* HealthFlipWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -162,6 +262,13 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				6FC82912180A5AE2B513E04D /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C43FACA80FDF92C0FA6B388E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -248,10 +355,29 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				2A5DF51FB806996FF83C4CD3 /* HealthFlipNative.swift in Sources */,
+				6E34E2898D022C2DBA276018 /* HealthFlipNative.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		204E4CC21FDF44AFBB9A939F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DC4EA59A28CFEF68388B16F9 /* HealthFlipWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2A73B2F31ED73FEA2945C2FB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = HealthFlipWidget;
+			target = 9B5B1FFB6ECA6C8A3357C141 /* HealthFlipWidget */;
+			targetProxy = E1204748A4244491E2CAC2A0 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -260,6 +386,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = healthFlip/healthFlip.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = healthFlip/Info.plist;
@@ -290,6 +417,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = healthFlip/healthFlip.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = healthFlip/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
@@ -311,6 +439,33 @@
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
+		};
+		1D03406DEEF03719D8CD09DF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = HealthFlipWidget/HealthFlipWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4SJP58N7W5;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HealthFlipWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.healthFlip.HealthFlipWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 		83CBBA201A601CBA00E9B192 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -475,9 +630,46 @@
 			};
 			name = Release;
 		};
+		E33B83019328A6CFC1C6C228 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = HealthFlipWidget/HealthFlipWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4SJP58N7W5;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HealthFlipWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.healthFlip.HealthFlipWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		0485DA0358F092646B90E3E7 /* Build configuration list for PBXNativeTarget "HealthFlipWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E33B83019328A6CFC1C6C228 /* Release */,
+				1D03406DEEF03719D8CD09DF /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "healthFlip" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

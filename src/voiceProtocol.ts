@@ -1,7 +1,13 @@
 // Gemini Live wire protocol helpers. Kept free of React/native imports so they stay unit-testable.
 
+import type { MealType } from './types';
+
+export type LiveFunctionCall = { args?: Record<string, unknown>; id?: string; name?: string };
+
 export type LiveServerMessage = {
   goAway?: { timeLeft?: string };
+  toolCall?: { functionCalls?: LiveFunctionCall[] };
+  toolCallCancellation?: { ids?: string[] };
   setupComplete?: Record<string, never>;
   serverContent?: {
     generationComplete?: boolean;
@@ -25,6 +31,17 @@ export function buildSetupMessage(model: string): string {
 export function buildAudioMessage(base64Pcm: string): string {
   return JSON.stringify({ realtimeInput: { audio: { data: base64Pcm, mimeType: inputAudioMimeType } } });
 }
+
+// Answers a Gemini function call; the model waits for this before it continues speaking.
+export function buildToolResponseMessage(id: string | undefined, name: string | undefined, response: Record<string, unknown>): string {
+  return JSON.stringify({ toolResponse: { functionResponses: [{ id, name, response }] } });
+}
+
+// Typed turns (suggestion chips) go through the same realtime channel as speech.
+export function buildTextMessage(text: string): string {
+  return JSON.stringify({ realtimeInput: { text } });
+}
+
 
 // Gemini sends every server message as a binary frame containing UTF-8 JSON.
 export function parseServerMessage(data: unknown): LiveServerMessage | null {
@@ -79,5 +96,20 @@ export function decodeUtf8Fallback(bytes: Uint8Array): string {
 /* eslint-enable no-bitwise */
 
 export function looksLikeMeal(text: string): boolean {
-  return /\b(ate|had|eat|meal|breakfast|lunch|dinner|snack|khaya|khayi|khana|roti|rice|dal|paneer|chicken|egg|omelet|omelette)\b/i.test(text);
+  return /\b(ate|had|eat|meal|breakfast|lunch|dinner|snack|khaya|khayi|khana|roti|rice|dal|paneer|chicken|egg|omelet|omelette|poha|chai|wrap)\b/i.test(text);
+}
+
+const MEAL_TYPES: readonly MealType[] = ['breakfast', 'lunch', 'snacks', 'dinner'];
+
+export function parseMealType(value: unknown): MealType | null {
+  return MEAL_TYPES.includes(value as MealType) ? value as MealType : null;
+}
+
+// An explicitly named meal wins over the time-of-day default.
+export function mealTypeFromText(text: string): MealType | null {
+  if (/\b(breakfast|nashta)\b/i.test(text)) return 'breakfast';
+  if (/\blunch\b/i.test(text)) return 'lunch';
+  if (/\b(dinner|supper)\b/i.test(text)) return 'dinner';
+  if (/\bsnacks?\b/i.test(text)) return 'snacks';
+  return null;
 }

@@ -1,7 +1,7 @@
 import { NativeModules, Platform } from 'react-native';
-import type { Dashboard, Goal, GoalType, Meal, MealType } from '../types';
+import type { Dashboard, DietPlanOptions, ExercisePlanOptions, Goal, GoalType, ImageMimeType, Meal, MealItem, MealType, Memory, MemoryCategory, PlanDraft, PlanRecommendation, PlanSummary, Profile, HealthReport, ReportDraft, ReportFileType, ReportSummary, SavedFood, SavedPlan, WaterDay } from '../types';
 import { dateKey } from '../meals';
-import { getGuestToken, saveGuestToken } from '../storage/session';
+import { clearGuestToken, getGuestToken, saveGuestToken } from '../storage/session';
 
 // A bundled Debug build has a file:// script URL, so it cannot discover Metro's
 // host at runtime. Keep the local iPhone fallback on the Mac's current Wi-Fi IP.
@@ -34,6 +34,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+/** Absolute API URL plus the guest's auth header, for native downloads that bypass fetch. */
+export async function authorizedRequest(path: string): Promise<{ headers: Record<string, string>; url: string }> {
+  await ensureGuest();
+  const token = await getGuestToken();
+  return { headers: token ? { Authorization: `Bearer ${token}` } : {}, url: `${API_BASE_URL}${path}` };
+}
+
 async function ensureGuest(): Promise<void> {
   if (await getGuestToken()) {
     return;
@@ -49,7 +56,23 @@ export async function getCurrentGoal(): Promise<Goal | null> {
   return response.goal;
 }
 
-export async function saveGoal(input: { dailyCalorieTarget: number; type: GoalType }): Promise<Goal> {
+export async function resetGuest(): Promise<void> {
+  await ensureGuest();
+  await request<void>('/v1/me', { method: 'DELETE' });
+  await clearGuestToken();
+}
+
+export type GoalInput = {
+  carbsTargetGrams?: number | null;
+  dailyCalorieTarget: number;
+  dailyStepsTarget?: number | null;
+  fatTargetGrams?: number | null;
+  planRationale?: string | null;
+  proteinTargetGrams?: number | null;
+  type: GoalType;
+};
+
+export async function saveGoal(input: GoalInput): Promise<Goal> {
   await ensureGuest();
   const response = await request<{ goal: Goal }>('/v1/goals/current', {
     body: JSON.stringify({ ...input, startsOn: dateKey() }),
@@ -91,12 +114,138 @@ export async function deleteMeal(mealId: string): Promise<void> {
   await request<void>(`/v1/meals/${mealId}`, { method: 'DELETE' });
 }
 
+export async function getProfile(): Promise<Profile | null> {
+  await ensureGuest();
+  return (await request<{ profile: Profile | null }>('/v1/profile')).profile;
+}
+
+export async function saveProfile(profile: Profile): Promise<Profile> {
+  await ensureGuest();
+  return (await request<{ profile: Profile }>('/v1/profile', { body: JSON.stringify(profile), method: 'PUT' })).profile;
+}
+
+export async function recommendPlan(goalType: GoalType): Promise<PlanRecommendation> {
+  await ensureGuest();
+  const response = await request<{ recommendation: PlanRecommendation }>('/v1/ai/plan-recommendation', {
+    body: JSON.stringify({ goalType }),
+    method: 'POST',
+  });
+  return response.recommendation;
+}
+
+export async function getMemories(): Promise<Memory[]> {
+  await ensureGuest();
+  return (await request<{ memories: Memory[] }>('/v1/memories')).memories;
+}
+
+export async function saveMemory(text: string, category: MemoryCategory = 'other'): Promise<Memory> {
+  await ensureGuest();
+  return (await request<{ memory: Memory }>('/v1/memories', { body: JSON.stringify({ category, text }), method: 'POST' })).memory;
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  await ensureGuest();
+  await request<void>(`/v1/memories/${id}`, { method: 'DELETE' });
+}
+
+export async function listFoods(): Promise<SavedFood[]> {
+  await ensureGuest();
+  return (await request<{ foods: SavedFood[] }>('/v1/foods')).foods ?? [];
+}
+
+/** Saves a confirmed meal for "Pick from list"; the same name refreshes the existing entry. */
+export async function saveFood(food: { caloriesKcal: number; carbsGrams?: number | null; fatGrams?: number | null; name: string; proteinGrams?: number | null; serving?: string }): Promise<SavedFood> {
+  await ensureGuest();
+  return (await request<{ food: SavedFood }>('/v1/foods', { body: JSON.stringify(food), method: 'POST' })).food;
+}
+
+export async function deleteFood(id: string): Promise<void> {
+  await ensureGuest();
+  await request<void>(`/v1/foods/${id}`, { method: 'DELETE' });
+}
+
+/** Reads report pages with Flip. Returns a draft only; nothing is saved until saveReport. */
+export async function extractReport(files: { base64: string; mimeType: ReportFileType }[]): Promise<ReportDraft> {
+  await ensureGuest();
+  return (await request<{ draft: ReportDraft }>('/v1/reports/extract', { body: JSON.stringify({ files }), method: 'POST' })).draft;
+}
+
+export async function saveReport(draft: ReportDraft): Promise<HealthReport> {
+  await ensureGuest();
+  return (await request<{ report: HealthReport }>('/v1/reports', { body: JSON.stringify(draft), method: 'POST' })).report;
+}
+
+export async function listReports(): Promise<ReportSummary[]> {
+  await ensureGuest();
+  return (await request<{ reports: ReportSummary[] }>('/v1/reports')).reports ?? [];
+}
+
+export async function getReport(id: string): Promise<HealthReport> {
+  await ensureGuest();
+  return (await request<{ report: HealthReport }>(`/v1/reports/${id}`)).report;
+}
+
+export async function deleteReport(id: string): Promise<void> {
+  await ensureGuest();
+  await request<void>(`/v1/reports/${id}`, { method: 'DELETE' });
+}
+
+export async function setWaterTarget(targetMl: number | null, source: 'user' | 'report' = 'user'): Promise<{ source: WaterDay['source']; targetMl: number | null }> {
+  await ensureGuest();
+  return (await request<{ target: { source: WaterDay['source']; targetMl: number | null } }>('/v1/water/target', { body: JSON.stringify({ source, targetMl }), method: 'PUT' })).target;
+}
+
+export async function logWater(amountMl: number, date = dateKey()): Promise<WaterDay> {
+  await ensureGuest();
+  return (await request<{ water: WaterDay }>('/v1/water', { body: JSON.stringify({ amountMl, date }), method: 'POST' })).water;
+}
+
+export async function undoWater(date = dateKey()): Promise<WaterDay> {
+  await ensureGuest();
+  return (await request<{ water: WaterDay }>(`/v1/water/last?date=${date}`, { method: 'DELETE' })).water;
+}
+
+export type GeneratePlanRequest =
+  | { kind: 'diet'; options?: Partial<DietPlanOptions> }
+  | { kind: 'exercise'; options?: Partial<ExercisePlanOptions> };
+
+/** Generates an unsaved draft; multi-day plans can take several seconds. */
+export async function generatePlan(input: GeneratePlanRequest): Promise<PlanDraft> {
+  await ensureGuest();
+  return (await request<{ plan: PlanDraft }>('/v1/plans/generate', { body: JSON.stringify(input), method: 'POST' })).plan;
+}
+
+export async function savePlan(draft: PlanDraft): Promise<SavedPlan> {
+  await ensureGuest();
+  const body = { content: draft.content, kind: draft.kind, options: draft.options, source: draft.source };
+  return (await request<{ plan: SavedPlan }>('/v1/plans', { body: JSON.stringify(body), method: 'POST' })).plan;
+}
+
+export async function listPlans(): Promise<PlanSummary[]> {
+  await ensureGuest();
+  return (await request<{ plans?: PlanSummary[] }>('/v1/plans')).plans ?? [];
+}
+
+export async function getPlan(id: string): Promise<SavedPlan> {
+  await ensureGuest();
+  return (await request<{ plan: SavedPlan }>(`/v1/plans/${id}`)).plan;
+}
+
+export async function deletePlan(id: string): Promise<void> {
+  await ensureGuest();
+  await request<void>(`/v1/plans/${id}`, { method: 'DELETE' });
+}
+
 export type AiMealEstimate = {
   assumptions: string[];
   caloriesKcal: number;
   carbsGrams: number | null;
   confidence: 'low' | 'medium' | 'high';
   fatGrams: number | null;
+  /** A short food-level note tied to the user's lab report, when relevant. */
+  healthTip?: string | null;
+  /** Each distinct item to confirm; older servers may omit it. */
+  items?: MealItem[];
   name: string;
   proteinGrams: number | null;
   source: 'ai' | 'fallback';
@@ -125,7 +274,7 @@ export async function estimateMeal(description: string, mealType: MealType): Pro
   return response.estimate;
 }
 
-export async function estimateMealFromImage(imageBase64: string, mimeType: 'image/jpeg' | 'image/png' | 'image/webp', mealType: MealType): Promise<AiMealEstimate> {
+export async function estimateMealFromImage(imageBase64: string, mimeType: ImageMimeType, mealType: MealType): Promise<AiMealEstimate> {
   await ensureGuest();
   const response = await request<{ estimate: AiMealEstimate }>('/v1/ai/meal-estimate-image', {
     body: JSON.stringify({ imageBase64, mealType, mimeType }),

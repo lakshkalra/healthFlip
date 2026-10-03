@@ -408,6 +408,70 @@ Physical iPhone (iPhone 15 Pro, `00008130-000E1D8201D8001C`):
 - Image meal estimation is still **not working** on the device (HEIC and the photo path, handoff
   item D).
 
+### Personalisation: profile, AI plan, live steps, Flip memory (2026-10-03)
+
+- Guest-based; no login. New tables `guest_profiles` (adults 18–100, height, weight, sex, activity) and
+  `guest_memories`, plus nullable plan columns on `goals` (migration `0004_profile_plan_memory`).
+- Plan: a deterministic Mifflin-St Jeor baseline (`src/shared/nutrition.ts`) that Gemini personalises.
+  The guard keeps calories within 10% of the baseline and above the floor (max(BMR, 1200)), requires
+  macros to add up, and keeps steps between 3k and 20k. On AI failure, the baseline plan is returned
+  so onboarding never blocks.
+  - Real Gemini through the backend: Arjun (maintain) 2,650 kcal and 10k steps; Priya (lose)
+    1,400 kcal, exactly at the floor. About 1.5–1.8 s each.
+- Memory: the `save_memory` live tool, plus `GET/POST/DELETE /v1/memories` with dedupe, a cap of 50,
+  and an injection/medical screen. Memories go into Flip's prompt as data. Real Gemini: one sentence
+  produced two calls, "Vegetarian" (diet) and "Goes to the gym every morning at 7am" (routine).
+- Mobile:
+  - three-step onboarding (`src/onboarding.tsx`);
+  - a Home plan card with live Apple Health steps (`@kingstinct/react-native-healthkit` 16);
+  - a Profile screen with "What Flip remembers";
+  - Flip greets the user by name.
+  - A manual calorie edit keeps the plan's steps and rescales its macros.
+- iOS: HealthKit entitlement and usage strings. The Podfile `post_install` adds core's private module
+  path to `ReactNativeHealthkit` (needed for explicit module builds). The signed Debug build with the
+  HealthKit entitlement installed on the iPhone 15 Pro.
+- Checks:
+  - API: typecheck, unit 15/15, integration 17/17.
+  - Mobile: tsc, lint, Jest 25/25.
+- Pending:
+  - device run of onboarding, the Health permission and steps, and memory in a live conversation;
+  - Android step tracking (Health Connect);
+  - production migration 0004.
+
+### Diet and exercise plans with PDF (2026-10-03)
+
+- API:
+  - `POST /v1/plans/generate` returns an unsaved draft.
+  - `POST /v1/plans` saves it, re-validating the content.
+  - `GET /v1/plans`, `GET /v1/plans/:id` and `DELETE /v1/plans/:id` list, read and delete plans.
+  - `GET /v1/plans/:id/pdf` returns an A4 PDF from pdfkit.
+  - Plans are stored in the `wellness_plans` table (migration `0005_wellness_plans`).
+- Generation uses the profile, the goal targets and Flip's memories:
+  - diet: 1, 3 or 7 days, diet type and cuisine;
+  - exercise: 2–6 days a week, home/gym/outdoors, level and minutes per session;
+  - notes are screened for injection and medical requests.
+  - If the AI fails or returns invalid output, a template plan is used and labelled. Templates drop
+    foods the user's memories say they are allergic to or avoid.
+- Real Gemini through the backend:
+  - a 7-day vegetarian diet in about 7 s, each day within 10 kcal of 1,600 and peanut-free for a
+    user with a peanut-allergy memory;
+  - a 4-day home workout in about 4 s.
+  - The PDFs were checked visually; each day's block now stays on one page.
+- Voice: the `create_plan` tool. Real Gemini mapped "make me a three-day vegetarian meal plan" to
+  `{kind: diet, days: 3, dietType: vegetarian}` and pointed the user to the Plans tab.
+- Mobile:
+  - the Plans tab replaces Rewards;
+  - generate forms, preview, Save, a saved list, and Download PDF, which uses
+    `react-native-blob-util` and opens iOS Quick Look with Share / Save to Files / Print;
+  - Flip's notes in the transcript.
+- Checks:
+  - API: typecheck, unit 20/20, integration 19/19.
+  - Mobile: tsc, lint, Jest 27/27.
+  - The signed build is installed on the iPhone 15 Pro.
+- Pending:
+  - on-device check of the PDF viewer;
+  - production migrations 0004–0005.
+
 ### Phase 3 remaining checklist
 
 - [ ] Add and verify the live Gemini provider adapter (requires Gemini API key).

@@ -1,10 +1,11 @@
 import UIKit
+import UserNotifications
 import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
 
 @main
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
   var window: UIWindow?
 
   var reactNativeDelegate: ReactNativeDelegate?
@@ -20,8 +21,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     reactNativeDelegate = delegate
     reactNativeFactory = factory
+    UNUserNotificationCenter.current().delegate = self
 
     return true
+  }
+
+  // Water reminders should still show as a banner while healthFlip is open.
+  func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    completionHandler([.banner, .sound, .list])
   }
 }
 
@@ -41,6 +52,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
       return
     }
 
+    // A widget tap that cold-starts the app; JS collects it via HealthFlipNative.takeLaunchURL.
+    HealthFlipNative.launchURL = connectionOptions.urlContexts.first?.url
+
     let window = UIWindow(windowScene: windowScene)
     factory.startReactNative(
       withModuleName: "healthFlip",
@@ -50,6 +64,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     self.window = window
     appDelegate.window = window
+  }
+
+  // healthflip:// links while the app is running (widget taps) go to React Native's Linking.
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    guard let url = URLContexts.first?.url else { return }
+    // Same notification RCTLinkingManager posts; Linking's "url" event listens for it.
+    NotificationCenter.default.post(name: NSNotification.Name("RCTOpenURLNotification"), object: nil, userInfo: ["url": url.absoluteString])
   }
 }
 

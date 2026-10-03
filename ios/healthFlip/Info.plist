@@ -2,6 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>org.reactjs.native.example.healthFlip</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>healthflip</string>
+			</array>
+		</dict>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -37,6 +48,10 @@
 	<string>healthFlip uses the camera only when you choose to capture a meal photo.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>healthFlip uses the microphone only when you choose voice meal input.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>healthFlip reads your step count from Apple Health to show today's steps against your plan. It never writes to Apple Health.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>healthFlip does not write to Apple Health.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>healthFlip connects to your Mac's development server while testing the app locally.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
