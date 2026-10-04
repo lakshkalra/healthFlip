@@ -223,7 +223,7 @@ export function AssistantScreen({ initialQuery, initialType, remainingCalories, 
           <View style={styles.orb}><ParticleOrb width={34} height={34} mini /></View>
           <View>
             <Text style={styles.title}>Log a meal</Text>
-            <Text style={styles.subtitle}>with Flip</Text>
+            <Text style={styles.subtitle}>with Flip · your food companion</Text>
           </View>
         </View>
         <View style={styles.spacer44} />
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
   chipText: { color: colors.ink, fontSize: 14, fontWeight: '700' },
   chipTextPrimary: { color: colors.white },
   inputBar: { alignItems: 'center', backgroundColor: colors.white, borderTopColor: colors.chip, borderTopWidth: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10 },
-  input: { backgroundColor: colors.bg, borderRadius: 22, color: colors.ink, flex: 1, fontSize: 16, height: 44, paddingHorizontal: 16 },
+  input: { backgroundColor: colors.bg, borderColor: colors.chip, borderRadius: 22, borderWidth: 1, color: colors.ink, flex: 1, fontSize: 16, height: 44, paddingHorizontal: 16 },
   send: { alignItems: 'center', backgroundColor: colors.ink, borderRadius: 22, height: 44, justifyContent: 'center', width: 44 },
   disabled: { opacity: 0.35 },
   card: { alignSelf: 'stretch', backgroundColor: colors.white, borderRadius: 24, boxShadow: '0 8px 22px rgba(28,31,26,.08)', gap: 10, padding: 16 },

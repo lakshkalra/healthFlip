@@ -824,6 +824,10 @@ function DashboardContent({ dashboard, health, insight, insightState, target, me
   return (
     <>
       <View style={screen.hero}>
+        <View style={screen.heroEyebrow}>
+          <Icon name="flame" size={14} color={colors.greenDark} stroke={2.6} />
+          <Text style={screen.heroEyebrowText}>TODAY’S BALANCE</Text>
+        </View>
         <View style={screen.heroTop}>
           <View style={[screen.grow, screen.gap10]}>
             <View style={screen.gap2}>
@@ -960,7 +964,7 @@ function BottomNav({ activeTab, onNavigate, onAdd }: { activeTab: Tab; onNavigat
 function NavItem({ tab, icon, label, active, onPress }: { tab: Tab; icon: IconName; label: string; active: boolean; onPress: (tab: Tab) => void }) {
   return (
     <Pressable accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => onPress(tab)} style={screen.navItem}>
-      <Icon name={icon} size={22} color={active ? colors.ink : '#8a8f82'} />
+      <View style={[screen.navIcon, active && screen.navIconOn]}><Icon name={icon} size={21} color={active ? colors.ink : '#8a8f82'} /></View>
       <Text style={[screen.navLabel, active && screen.navActive]}>{label}</Text>
       <View style={[screen.navDot, active && screen.navDotOn]} />
     </Pressable>
@@ -1350,6 +1354,8 @@ const screen = StyleSheet.create({
   insightTitle: { color: colors.ink, fontSize: 15, fontWeight: '800' },
   insightAction: { color: colors.greenDark, fontSize: 13, fontWeight: '700', lineHeight: 19 },
   hero: { backgroundColor: colors.lime, borderRadius: 28, gap: 16, padding: 20 },
+  heroEyebrow: { alignItems: 'center', flexDirection: 'row', gap: 6 },
+  heroEyebrowText: { color: colors.greenDark, fontSize: 11, fontWeight: '800', letterSpacing: 1.1 },
   heroTop: { alignItems: 'center', flexDirection: 'row', gap: 14 },
   kickerText: { color: colors.greenDark, fontSize: 13, fontWeight: '600' },
   heroNumber: { color: colors.ink, fontSize: 34, fontWeight: '800', letterSpacing: -0.7, lineHeight: 38 },
@@ -1375,7 +1381,9 @@ const screen = StyleSheet.create({
   sectionTitle: { color: colors.ink, fontSize: 18, fontWeight: '800' },
   mealTime: { color: colors.muted2, fontSize: 12 },
   nav: { backgroundColor: colors.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, bottom: 0, boxShadow: '0 -4px 20px rgba(0,0,0,.05)', flexDirection: 'row', left: 0, paddingTop: 12, position: 'absolute', right: 0 },
-  navItem: { alignItems: 'center', flex: 1, gap: 4 },
+  navItem: { alignItems: 'center', flex: 1, gap: 3 },
+  navIcon: { alignItems: 'center', borderRadius: 14, height: 30, justifyContent: 'center', width: 48 },
+  navIconOn: { backgroundColor: colors.selected },
   navLabel: { color: colors.disabled, fontSize: 11 },
   navActive: { color: colors.ink, fontWeight: '700' },
   navDot: { backgroundColor: 'transparent', borderRadius: 3, height: 5, width: 5 },

@@ -1,24 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { Asset } from 'react-native-image-picker';
 
 import type { ImageMimeType } from './types';
-import { Icon, colors } from './ui';
-
-type SpeechEvent = {
-  message?: string;
-  results?: { transcriptions?: Array<{ text?: string }> };
-  value?: string;
-};
-
-type SpeechKit = {
-  addEventListener: (eventName: string, handler: (event: SpeechEvent) => void) => { remove: () => void };
-  destroy: () => Promise<string> | string | undefined;
-  isRecognitionAvailable: () => Promise<boolean>;
-  speechRecogntionEvents: { END: string; ERROR: string; RESULTS: string; PARTIAL_RESULTS: string; START: string };
-  startListening: () => Promise<string>;
-  stopListening: () => Promise<string>;
-};
 
 export type MealImage = {
   base64: string;
@@ -28,115 +10,6 @@ export type MealImage = {
 
 // The API accepts about 1.5 MB of image bytes (2,000,000 base64 characters).
 const MAX_BASE64_LENGTH = 1_900_000;
-
-function getSpeechKit(): SpeechKit | null {
-  try {
-    // Keep the native module lazy so Jest and platforms without speech support can use the manual path.
-    return require('react-native-speech-recognition-kit') as SpeechKit;
-  } catch {
-    return null;
-  }
-}
-
-async function requestMicrophonePermission(): Promise<boolean> {
-  if (Platform.OS !== 'android') return true;
-
-  const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO, {
-    buttonNegative: 'Not now',
-    buttonPositive: 'Allow',
-    message: 'healthFlip uses the microphone only to turn your meal description into text.',
-    title: 'Allow microphone access',
-  });
-  return result === PermissionsAndroid.RESULTS.GRANTED;
-}
-
-export function VoiceCaptureButton({ disabled = false, onText, style }: { disabled?: boolean; onText: (text: string) => void; style?: StyleProp<ViewStyle> }) {
-  const [status, setStatus] = useState<'idle' | 'listening' | 'error'>('idle');
-  const [message, setMessage] = useState('');
-  const onTextRef = useRef(onText);
-
-  useEffect(() => {
-    onTextRef.current = onText;
-  }, [onText]);
-
-  useEffect(() => {
-    const kit = getSpeechKit();
-    if (!kit) return undefined;
-
-    const events = kit.speechRecogntionEvents;
-    const partial = kit.addEventListener(events.PARTIAL_RESULTS, event => {
-      const text = event.value ?? event.results?.transcriptions?.[0]?.text ?? '';
-      if (text.trim()) onTextRef.current(text.trim());
-    });
-    const result = kit.addEventListener(events.RESULTS, event => {
-      const text = event.value ?? event.results?.transcriptions?.[0]?.text ?? '';
-      if (text.trim()) onTextRef.current(text.trim());
-    });
-    const started = kit.addEventListener(events.START, () => setStatus('listening'));
-    const ended = kit.addEventListener(events.END, () => setStatus('idle'));
-    const error = kit.addEventListener(events.ERROR, event => {
-      setStatus('error');
-      setMessage(formatSpeechError(event.message));
-    });
-
-    return () => {
-      partial.remove();
-      result.remove();
-      started.remove();
-      ended.remove();
-      error.remove();
-      Promise.resolve(kit.destroy()).catch(() => undefined);
-    };
-  }, []);
-
-  async function toggle() {
-    const kit = getSpeechKit();
-    if (!kit) {
-      setStatus('error');
-      setMessage('Voice input is not available on this build. You can type the meal instead.');
-      return;
-    }
-    if (status === 'listening') {
-      await Promise.resolve(kit.stopListening()).catch(() => setStatus('error'));
-      return;
-    }
-    if (!(await requestMicrophonePermission())) {
-      setStatus('error');
-      setMessage('Microphone access was denied. You can type the meal instead.');
-      return;
-    }
-    try {
-      setMessage('');
-      if (!(await kit.isRecognitionAvailable())) {
-        setStatus('error');
-        setMessage('Speech recognition is unavailable on this device.');
-        return;
-      }
-      setStatus('listening');
-      await kit.startListening();
-    } catch {
-      setStatus('error');
-      setMessage('Voice input is unavailable right now.');
-    }
-  }
-
-  return (
-    <View style={style}>
-      <Pressable accessibilityLabel={status === 'listening' ? 'Stop voice input' : 'Use voice input'} accessibilityRole="button" disabled={disabled} onPress={toggle} style={({ pressed }) => [mediaStyles.button, pressed && mediaStyles.pressed, status === 'listening' && mediaStyles.listening, disabled && mediaStyles.disabled]}>
-        <Icon name="mic" color={colors.greenDark} size={18} />
-        <Text style={mediaStyles.buttonText}>{status === 'listening' ? 'Stop listening' : 'Use voice'}</Text>
-      </Pressable>
-      {status === 'error' && message ? <Text style={mediaStyles.error}>{message}</Text> : null}
-    </View>
-  );
-}
-
-function formatSpeechError(message?: string): string {
-  if (message?.toLowerCase().includes('canceled')) {
-    return 'Voice input was canceled. Keep Flip open and try again on the iPhone microphone.';
-  }
-  return message ?? 'Voice input is unavailable right now.';
-}
 
 export async function chooseMealImage(source: 'camera' | 'library'): Promise<MealImage | null> {
   const picker = require('react-native-image-picker') as {
@@ -282,12 +155,3 @@ export function sniffImageType(base64: string): ImageMimeType | null {
   }
   return null;
 }
-
-const mediaStyles = StyleSheet.create({
-  button: { alignItems: 'center', backgroundColor: colors.white, borderRadius: 14, flexDirection: 'row', gap: 8, minHeight: 46, paddingHorizontal: 14 },
-  buttonText: { color: colors.greenDark, fontSize: 13, fontWeight: '800' },
-  disabled: { opacity: 0.55 },
-  error: { color: colors.dangerText, fontSize: 12, lineHeight: 17, marginTop: 6 },
-  listening: { backgroundColor: colors.limeBright },
-  pressed: { backgroundColor: colors.selected },
-});

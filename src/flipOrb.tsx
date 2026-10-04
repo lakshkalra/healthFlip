@@ -1,129 +1,70 @@
 import { useEffect, useMemo } from 'react';
-import { Canvas, Picture, Skia, TileMode, createPicture } from '@shopify/react-native-skia';
-import { useDerivedValue, useFrameCallback, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import { StyleSheet, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, type SharedValue } from 'react-native-reanimated';
 
-// Particle orb from the Flip agent spec (§8): points on a sphere, depth-sorted and redrawn every
-// frame on the UI thread. Amplitude follows mic level while listening and word pulses while speaking.
-
+// Lightweight native orb. Keeping the orb in regular native views avoids shipping a
+// large GPU drawing runtime solely for this decorative visualizer.
 export type OrbPhase = 'idle' | 'listening' | 'thinking' | 'speaking';
 
-const PHASE_CODE: Record<OrbPhase, number> = { idle: 0, listening: 1, thinking: 2, speaking: 3 };
-const DOT_COLORS = ['#8cc23a', '#6fbf3a', '#5cc8a8', '#e0b93a'];
-const MUTED_DOT = '#8f948a';
-
-type Particle = { c: number; k: number; ph: number; sp: number; th: number };
-
-function makeParticles(count: number): Particle[] {
-  return Array.from({ length: count }, () => ({
-    c: Math.floor(Math.random() * 4),
-    k: Math.random() * Math.PI * 2,
-    ph: Math.acos(2 * Math.random() - 1),
-    sp: 0.6 + Math.random() * 0.8,
-    th: Math.random() * Math.PI * 2,
-  }));
-}
+const COLORS = ['#8cc23a', '#6fbf3a', '#5cc8a8', '#e0b93a'];
+const DOT_COUNT = 18;
 
 type ParticleOrbProps = {
   height: number;
   width: number;
-  /** Mic level 0..1, read while listening. */
   level?: SharedValue<number>;
-  /** Mini renders only the idle orb (Ask Flip pill). */
   mini?: boolean;
   muted?: boolean;
   phase?: OrbPhase;
-  /** Set to 1 on each spoken word; decays on the UI thread. */
   pulse?: SharedValue<number>;
 };
 
+function Dot({ index, size, level, muted, phase, pulse }: { index: number; size: number; level: SharedValue<number>; muted: boolean; phase: OrbPhase; pulse: SharedValue<number> }) {
+  const angle = (index / DOT_COUNT) * Math.PI * 2;
+  const distance = size * (0.24 + (index % 3) * 0.035);
+  const phaseOffset = useSharedValue(0);
+  useEffect(() => {
+    phaseOffset.value = withRepeat(withTiming(Math.PI * 2, { duration: phase === 'thinking' ? 1100 : 2200 }), -1, false);
+  }, [phase, phaseOffset]);
+  const style = useAnimatedStyle(() => {
+    const motion = phaseOffset.value + angle;
+    const energy = Math.max(level.value, pulse.value * 0.6);
+    const radius = distance * (1 + energy * (phase === 'speaking' ? 0.55 : 0.25));
+    return {
+      opacity: muted ? 0.28 : 0.35 + energy * 0.6,
+      transform: [
+        { translateX: Math.cos(motion) * radius },
+        { translateY: Math.sin(motion) * radius * 0.72 },
+        { scale: 0.75 + energy * 0.8 + (phase === 'speaking' ? Math.sin(motion * 2) * 0.12 : 0) },
+      ],
+    };
+  });
+  return <Animated.View style={[styles.dot, { backgroundColor: muted ? '#8f948a' : COLORS[index % COLORS.length], height: size * 0.075, width: size * 0.075 }, style]} />;
+}
+
 export function ParticleOrb({ height, level, mini = false, muted = false, phase = 'idle', pulse, width }: ParticleOrbProps) {
-  const particles = useMemo(() => makeParticles(mini ? 90 : 240), [mini]);
-  const phaseCode = useSharedValue(PHASE_CODE[phase]);
-  const mutedFlag = useSharedValue(muted ? 1 : 0);
   const ownLevel = useSharedValue(0);
   const ownPulse = useSharedValue(0);
   const levelValue = level ?? ownLevel;
   const pulseValue = pulse ?? ownPulse;
-  const time = useSharedValue(0);
-  const rot = useSharedValue(0);
-  const amp = useSharedValue(0.07);
-
-  useEffect(() => { phaseCode.value = PHASE_CODE[phase]; }, [phase, phaseCode]);
-  useEffect(() => { mutedFlag.value = muted ? 1 : 0; }, [muted, mutedFlag]);
-
-  const frame = useFrameCallback(info => {
-    const dt = Math.min((info.timeSincePreviousFrame ?? 16) / 1000, 0.05);
-    const t = time.value + dt;
-    const code = phaseCode.value;
-    pulseValue.value *= Math.pow(0.03, dt);
-    let target = 0.07 * (0.6 + 0.4 * Math.sin(t * 1.6));
-    if (code === 1) target = Math.max(0.05, levelValue.value);
-    else if (code === 2) target = 0.12;
-    else if (code === 3) target = 0.28 + pulseValue.value * 0.45 + Math.sin(t * 26) * 0.05;
-    amp.value += (target - amp.value) * Math.min(1, dt * 10);
-    rot.value += dt * (code === 2 ? 3.4 : code === 3 ? 1.2 : 0.5);
-    time.value = t;
-  }, true);
-
-  // Muted freezes the animation loop (spec §4); the derived picture still redraws in greyscale.
-  useEffect(() => { frame.setActive(!muted); }, [frame, muted]);
-
-  const picture = useDerivedValue(() => createPicture(canvas => {
-    const t = time.value;
-    const a = amp.value;
-    const code = phaseCode.value;
-    const isMuted = mutedFlag.value === 1;
-    const think = code === 2;
-    const cx = width / 2;
-    const cy = height / 2;
-    const base = mini ? Math.min(width, height) * 0.36 : 56;
-    const R = base * (1 + a * 0.3);
-
-    const halo = Skia.Paint();
-    const haloAlpha = (0.4 + a * 0.3) * (isMuted ? 0.45 : 1);
-    const haloRgb = isMuted ? [0.62, 0.64, 0.6] : [183 / 255, 227 / 255, 106 / 255];
-    halo.setShader(Skia.Shader.MakeRadialGradient(
-      Skia.Point(cx, cy),
-      R * 1.3,
-      [Skia.Color(`rgba(${Math.round(haloRgb[0] * 255)},${Math.round(haloRgb[1] * 255)},${Math.round(haloRgb[2] * 255)},${haloAlpha})`), Skia.Color('rgba(183,227,106,0)')],
-      null,
-      TileMode.Clamp,
-    ));
-    canvas.drawCircle(cx, cy, R * 1.3, halo);
-
-    const n = particles.length;
-    const xs = new Array<number>(n);
-    const ys = new Array<number>(n);
-    const zs = new Array<number>(n);
-    const order = new Array<number>(n);
-    for (let i = 0; i < n; i++) {
-      const p = particles[i];
-      const th = p.th + rot.value * p.sp * (think ? 1.6 : 1);
-      const jig = Math.sin(t * 4 + p.k) * a * 0.35 + (code === 1 ? Math.sin(t * 9 + p.k * 3) * a * 0.2 : 0);
-      const r = R * (think ? 0.72 : 0.95) * (1 + a * 0.45 + jig);
-      zs[i] = Math.sin(p.ph) * Math.sin(th);
-      xs[i] = cx + r * Math.sin(p.ph) * Math.cos(th);
-      ys[i] = cy + r * Math.cos(p.ph) * 0.92;
-      order[i] = i;
-    }
-    order.sort((x, y) => zs[x] - zs[y]);
-
-    const dot = Skia.Paint();
-    dot.setAntiAlias(true);
-    const palette = (isMuted ? [MUTED_DOT, MUTED_DOT, MUTED_DOT, MUTED_DOT] : DOT_COLORS).map(hex => Skia.Color(hex));
-    const scale = Math.min(1, Math.max(0.35, R / 56));
-    for (let j = 0; j < n; j++) {
-      const i = order[j];
-      const z = zs[i];
-      dot.setColor(palette[particles[i].c]);
-      dot.setAlphaf((0.3 + 0.7 * (z + 1) / 2) * (isMuted ? 0.45 : 1));
-      canvas.drawCircle(xs[i], ys[i], (1 + (z + 1) * 1.1) * scale, dot);
-    }
-  }, { height, width }));
-
+  const size = Math.min(width, height);
+  const dots = useMemo(() => Array.from({ length: mini ? 10 : DOT_COUNT }, (_, index) => index), [mini]);
+  const haloStyle = useAnimatedStyle(() => ({
+    opacity: muted ? 0.25 : 0.45 + Math.max(levelValue.value, pulseValue.value) * 0.35,
+    transform: [{ scale: 0.9 + Math.max(levelValue.value, pulseValue.value) * 0.3 }],
+  }));
   return (
-    <Canvas style={{ height, width }} pointerEvents="none">
-      <Picture picture={picture} />
-    </Canvas>
+    <View pointerEvents="none" style={{ height, width }}>
+      <Animated.View style={[styles.halo, { height: size * 0.72, width: size * 0.72 }, haloStyle]} />
+      <View style={styles.center}>
+        {dots.map(index => <Dot key={index} index={index} size={size} level={levelValue} muted={muted} phase={phase} pulse={pulseValue} />)}
+      </View>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  center: { alignItems: 'center', bottom: 0, justifyContent: 'center', left: 0, position: 'absolute', right: 0, top: 0 },
+  dot: { borderRadius: 99, position: 'absolute' },
+  halo: { alignSelf: 'center', backgroundColor: '#b7e36a', borderRadius: 999, opacity: 0.5 },
+});

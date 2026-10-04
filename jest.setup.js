@@ -58,22 +58,6 @@ jest.mock('@kingstinct/react-native-healthkit', () => ({
   requestAuthorization: jest.fn(() => Promise.resolve(true)),
 }));
 
-jest.mock('@shopify/react-native-skia', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  const Leaf = () => null;
-  return {
-    Canvas: props => React.createElement(View, { style: props.style, testID: 'skia-canvas' }),
-    LinearGradient: Leaf,
-    Picture: Leaf,
-    Rect: Leaf,
-    Skia: {},
-    TileMode: { Clamp: 0 },
-    createPicture: () => null,
-    vec: (x, y) => ({ x, y }),
-  };
-});
-
 jest.mock('react-native-reanimated', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -84,9 +68,7 @@ jest.mock('react-native-reanimated', () => {
     default: Animated,
     Easing: { bezier: () => value => value, inOut: value => value, quad: 'quad' },
     useAnimatedStyle: worklet => worklet(),
-    // Drawing worklets need a real Skia canvas, so derived values and frame loops stay inert in tests.
     useDerivedValue: () => React.useRef({ value: null }).current,
-    useFrameCallback: () => React.useRef({ isActive: false, setActive: () => undefined }).current,
     // Like Reanimated, keep the same shared value object across renders.
     useSharedValue: value => React.useRef({ value }).current,
     withRepeat: value => value,
@@ -106,4 +88,3 @@ jest.mock('@react-native-documents/picker', () => ({
   pick: jest.fn(() => Promise.reject({ code: 'OPERATION_CANCELED' })),
   types: { pdf: 'com.adobe.pdf' },
 }));
-

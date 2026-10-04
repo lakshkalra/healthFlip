@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type ScrollViewInstance } from 'react-native';
 import { toByteArray, fromByteArray } from 'base64-js';
 import { useSharedValue } from 'react-native-reanimated';
-import { Canvas, LinearGradient, Rect, vec } from '@shopify/react-native-skia';
 import {
   configureAudioSession,
   deactivateAudioSession,
@@ -522,7 +521,7 @@ export function VoiceConversationScreen({ initialQuestion, mealType, onClose, on
         <CircleButton icon="close" label="Close Flip" onPress={close} size={44} />
         <View style={styles.titleBlock}>
           <Text style={styles.title}>Flip</Text>
-          <Text style={styles.subtitle}>Nutrition coach</Text>
+          <Text style={styles.subtitle}>Live wellness conversation</Text>
         </View>
         <View style={styles.headerSpacer} />
       </View>
@@ -539,11 +538,7 @@ export function VoiceConversationScreen({ initialQuestion, mealType, onClose, on
               ? <MemoryNote key={entry.id} text={entry.text} />
               : <MealCard key={entry.id} card={entry} onConfirm={() => logCard(entry)} />))}
         </ScrollView>
-        <Canvas style={styles.fade} pointerEvents="none">
-          <Rect x={0} y={0} width={width} height={28}>
-            <LinearGradient start={vec(0, 0)} end={vec(0, 28)} colors={[colors.bg, 'rgba(245,247,241,0)']} />
-          </Rect>
-        </Canvas>
+        <View style={[styles.fade, { width }]} pointerEvents="none" />
       </View>
 
       <View style={styles.chipsSlot}>
