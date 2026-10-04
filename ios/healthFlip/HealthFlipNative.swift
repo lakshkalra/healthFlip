@@ -4,7 +4,7 @@ import UserNotifications
 import WidgetKit
 
 /// healthFlip's own native bits: daily local reminders, the Home Screen widget's data, and the URL a
-/// widget tap launched the app with. Exposed to JS as NativeModules.HealthFlipNative (src/native.ts).
+/// widget tap launched the app with. Exposed to JS as NativeModules.HealthFlipNative (src/services/native/healthFlipNative.ts).
 @objc(HealthFlipNative)
 final class HealthFlipNative: NSObject {
   static let appGroup = "group.org.reactjs.native.example.healthFlip"
