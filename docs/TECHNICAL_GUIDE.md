@@ -123,24 +123,22 @@ flowchart LR
 | Library | Version | What it does in healthFlip | Where |
 |---|---|---|---|
 | `react` | 19.2.3 | UI runtime | everywhere |
-| `react-native` | 0.87.1 | Native app framework (New Architecture, Hermes JS engine). Its built-in `WebSocket` (with `binaryType = 'arraybuffer'`) carries the Gemini Live connection. | everywhere, `src/voice.tsx` |
+| `react-native` | 0.87.1 | Native app framework (New Architecture, Hermes JS engine). Its built-in `WebSocket` (with `binaryType = 'arraybuffer'`) carries the Gemini Live connection. | everywhere, `src/screens/voice/VoiceScreen.tsx` |
 | `@react-native/new-app-screen` | 0.87.1 | Template default (unused in screens) | — |
 | `react-native-safe-area-context` | ^5.5.2 | Notch and home-indicator insets for every screen | all screens |
-| `@react-native-async-storage/async-storage` | ^3.1.1 | Persists the guest bearer token on the device | `src/storage/session.ts` |
-| `react-native-svg` | ^15.15.5 | Vector icons (`Icon` in `ui.tsx`), the calorie progress ring, Progress charts | `src/ui.tsx`, `src/progress.tsx` |
-| `react-native-reanimated` | ^4.7.1 | UI-thread animation: the Flip circular reveal, orb frame loop, shared values for mic level and word pulses | `src/flip.tsx`, `src/flipOrb.tsx`, `src/voice.tsx` |
+| `@react-native-async-storage/async-storage` | ^3.1.1 | Persists the guest bearer token on the device | `src/services/storage/session.ts` |
+| `react-native-svg` | ^15.15.5 | Vector icons (`Icon` in `components/ui/Icon.tsx`), the calorie progress ring, Progress charts | `src/constants/theme.ts`, `src/screens/progress/ProgressScreen.tsx` |
+| `react-native-reanimated` | ^4.7.1 | UI-thread animation: the Flip circular reveal, orb frame loop, shared values for mic level and word pulses | `src/components/flip/FlipReveal.tsx`, `src/components/flip/ParticleOrb.tsx`, `src/screens/voice/VoiceScreen.tsx` |
 | `react-native-worklets` | ^0.13.0 | Worklet runtime required by Reanimated 4 (Babel plugin enabled) | `babel.config.js` |
 | `react-native-gesture-handler` | ^3.3.0 | Gesture infrastructure (Reanimated/FlashList dependency) | — |
-| `@shopify/react-native-skia` | ^2.14.0 | GPU canvas: the **240-particle Flip orb** (depth-sorted sphere redrawn every frame on the UI thread) and the transcript's top fade gradient | `src/flipOrb.tsx`, `src/voice.tsx` |
 | `@shopify/flash-list` | ^2.3.3 | Installed; no longer used after the add-meal chat moved to a plain ScrollView (safe to remove) | — |
 | `react-native-nitro-modules` | ^0.36.5 | Nitro native-module runtime (JSI, near-zero bridge overhead) for the audio and HealthKit libraries | native |
-| `@mindinventory/react-native-nitro-realtime-audio` | ^1.5.0 | **Live voice I/O:** 16 kHz PCM mic capture in 100 ms chunks, 24 kHz PCM playback, duplex audio session with echo cancellation, noise suppression and AGC, plus voice-activity detection (`isSpeaking`, `rms`) | `src/voice.tsx` |
-| `base64-js` | ^1.5.1 | Fast base64 ⇄ bytes for PCM audio frames | `src/voice.tsx` |
-| `@kingstinct/react-native-healthkit` | ^16.0.0 | **Apple Health:** request step read access and query today's cumulative `HKQuantityTypeIdentifierStepCount` | `src/steps.ts` |
+| `@mindinventory/react-native-nitro-realtime-audio` | ^1.5.0 | **Live voice I/O:** 16 kHz PCM mic capture in 100 ms chunks, 24 kHz PCM playback, duplex audio session with echo cancellation, noise suppression and AGC, plus voice-activity detection (`isSpeaking`, `rms`) | `src/screens/voice/VoiceScreen.tsx` |
+| `base64-js` | ^1.5.1 | Fast base64 ⇄ bytes for PCM audio frames | `src/screens/voice/VoiceScreen.tsx` |
+| `@kingstinct/react-native-healthkit` | ^16.0.0 | **Apple Health:** request step read access and query today's cumulative `HKQuantityTypeIdentifierStepCount` | `src/features/steps/steps.ts` |
 | `@react-native-healthkit/core` | ^16.0.0 | Sibling core pod the HealthKit library needs. Must be a direct dependency for autolinking. | native |
-| `react-native-blob-util` | ^0.25.1 | **PDF download:** fetches the plan PDF with the auth header straight to a file, then opens iOS Quick Look (Share / Save to Files / Print) or Android's PDF viewer | `src/pdf.ts` |
-| `react-native-image-picker` | ^8.2.1 | Camera and photo-library selection for photo meal estimates (lazy `require`) | `src/media.tsx` |
-| `react-native-speech-recognition-kit` | ^1.0.7 | Older on-device dictation path in the text assistant (lazy, optional) | `src/media.tsx` |
+| `react-native-blob-util` | ^0.25.1 | **PDF download:** fetches the plan PDF with the auth header straight to a file, then opens iOS Quick Look (Share / Save to Files / Print) or Android's PDF viewer | `src/services/pdf/planPdf.ts` |
+| `react-native-image-picker` | ^8.2.1 | Camera and photo-library selection for photo meal estimates (lazy `require`) | `src/services/media/picker.ts` |
 
 #### Development dependencies
 
@@ -208,32 +206,57 @@ The test runner is Node's built-in **`node:test`** with `node:assert/strict`, so
 
 ### 4.1 Mobile: `healthFlip/`
 
+Code is grouped by role. Screens own their layout, components are reusable views, features hold pure
+logic (no I/O, unit-tested), services talk to the outside world, and constants, types and utils are
+shared by all.
+
 ```
-App.tsx                 Root: boot, routing (tabs + sub-screens), dashboard, meal sheet, Flip overlay
+App.tsx                         Entry point; re-exports src/app/App (React Native expects it here)
 src/
-  api/client.ts         Typed API client: guest bootstrap, request(), every endpoint wrapper
-  storage/session.ts    Guest token in AsyncStorage
-  types.ts              Shared app types (Goal, Dashboard, Profile, plans, memories…)
-  meals.ts              Meal types, GOALS, food presets, formatting, macroTargets fallback
-  ui.tsx                Design tokens (colors), Icon set, buttons, cards, inputs, ProgressRing, MacroBar…
-  onboarding.tsx        3-step onboarding (About you → Goal → AI plan) + reusable ProfileForm
-  profile.tsx           "You & Flip": edit profile, recalc plan, "What Flip remembers"
-  steps.ts              Apple Health access + today's steps
-  plans.tsx             Plans tab: generate forms, preview, save, saved list, PDF download
-  pdf.ts                Authenticated PDF download + native viewer
-  flip.tsx              "Ask Flip" pill (mini orb) + circular reveal transition
-  flipOrb.tsx           Skia particle orb (idle / listening / thinking / speaking / muted)
-  voice.tsx             Flip live voice agent screen (Gemini Live client, tools, meal cards)
-  voiceProtocol.ts      Pure Gemini Live protocol helpers (setup, audio, text, tool responses, parsing)
-  assistant.tsx         Add-meal chat with Flip: meal-type picker, text/photo estimates, Log it / Not quite, mic → live Flip
-  media.tsx             Photo picking + legacy dictation helpers
-  progress.tsx          Progress tab (history, charts)
-  tips.tsx              Tips tab (curated local content)
-__tests__/              App.test.tsx (app flows), voice.test.tsx (voice agent + protocol)
-jest.setup.js           Mocks: AsyncStorage, safe-area, FlashList, Nitro audio, HealthKit, blob-util, Skia, Reanimated
-ios/                    Xcode project, Podfile (with HealthKit include-path fix), entitlements, Info.plist
-docs/TECHNICAL_GUIDE.md This document
-IMPLEMENTATION_TRACKER.md Phase-by-phase evidence log
+  app/
+    App.tsx                     Root: boot, routing (tabs + sub-screens), app state, reminders, widget sync, deep links
+    navigation/BottomNav.tsx    Tab bar with the + (log a meal) button
+    types.ts                    Route, Tab, boot and dashboard states
+  screens/                      One folder per screen
+    boot/BootScreen.tsx         Launch screen and "can't reach healthFlip"
+    onboarding/                 OnboardingChatScreen: Flip asks the questions, then builds the plan
+    home/HomeScreen.tsx         Minimal Home: eaten/left ring, details, water, health row, meals
+    log-meal/LogMealScreen.tsx  Add-meal chat: text/photo estimates, item checklist, Pick from list
+    meal/                       MealDetailScreen, MealSheet (manual add/edit), FoodPicker, DeleteMealDialog
+    goal/GoalSetupScreen.tsx    Edit the daily calorie goal
+    voice/VoiceScreen.tsx       Flip live voice agent (Gemini Live client, tools, meal cards)
+    reports/ReportsScreen.tsx   Upload, review, save and read lab reports
+    plans/PlansScreen.tsx       Meal plans: generate, preview, save, PDF download
+    profile/ProfileScreen.tsx   Details, Flip's memories, reports link, reset
+    progress/, tips/            Progress tab (history, charts) and Tips tab
+  components/
+    ui/                         Button, Feedback, Icon, Input, Layout, Overlay, Progress, MealGroupCard,
+                                shared styles; import from 'components/ui'
+    chat/TranscriptLine.tsx     Flip/user chat line with typing caret
+    flip/                       ParticleOrb, FlipReveal (circular reveal) and the Ask Flip pill
+    health/HealthCards.tsx      Water card and Home health-report row
+    profile/ProfileForm.tsx     Profile form (Profile screen) and firstName()
+  features/                     Pure logic
+    meals/                      Meal types, food presets, macro fallback; item checklist maths (mealItems)
+    onboarding/parseAnswers.ts  Parse typed answers (5'7, 143 lb, "I'm a woman"...)
+    reminders/waterReminders.ts Reminder schedule, settings, enable/disable
+    voice/protocol.ts           Gemini Live message builders and parsers
+    widget/widgetSync.ts        Snapshot for the Home Screen widget
+    steps/steps.ts              Apple Health steps (paused)
+  services/                     I/O
+    api/                        One file per area (meals, goals, reports, water, plans, ai...) behind index.ts;
+                                http.ts holds request(), guest bootstrap and 401 recovery
+    media/picker.ts             Meal photos and report pages (HEIC-aware, size limits)
+    native/healthFlipNative.ts  JS side of the Swift module (reminders, widget data, launch URL)
+    pdf/planPdf.ts              Authenticated PDF download + native viewer
+    storage/session.ts          Guest token in AsyncStorage
+  constants/                    theme.ts (colours, meal-type styles), config.ts (API URL)
+  types/                        Shared types by area: goals, meals, plans, profile, health
+  utils/                        date, format, validation helpers
+__tests__/                      app/ (full flows), features/, screens/, services/
+jest.setup.js                   Native-module mocks (AsyncStorage, audio, HealthKit, pickers, blob-util, Reanimated)
+ios/                            Xcode project, HealthFlipNative (Swift), HealthFlipWidget extension, scripts/
+docs/                           This guide, OVERVIEW, TESTING_GUIDE, test-samples/
 ```
 
 ### 4.2 Backend: `healthflip-api/`
@@ -242,31 +265,44 @@ IMPLEMENTATION_TRACKER.md Phase-by-phase evidence log
 src/
   server.ts             Loads .env, builds app, listens on HOST:PORT
   app.ts                Composition root: repositories → services → controllers → routers, error handler
+                        (also the Vercel handler)
+  config/env.ts         Environment parsing
   db/
     client.ts           pg Pool + drizzle client
     migrate.ts          Runs drizzle/ migrations
-    schema/             One file per table (guests, guest-sessions, goals, meal-entries,
-                        guest-profiles, guest-memories, wellness-plans)
-    repositories/       Data access per aggregate (guest, goal, meal, profile, memory, wellness-plan)
-  modules/
-    guests/             POST /v1/guests, GET /v1/me
+    schema/             One file per table (guests, guest-sessions, goals, meal-entries, guest-profiles,
+                        guest-memories, guest-foods, wellness-plans, health-reports, water)
+    repositories/       Data access per aggregate (guest, goal, meal, profile, memory, food,
+                        wellness-plan, health-report, water)
+  modules/              One folder per feature: <name>.router / controller / service / validator / helper
+    guests/             POST /v1/guests, GET|DELETE /v1/me
     goals/              GET|PUT /v1/goals/current (+ plan targets)
     meals/              CRUD /v1/meals
-    dashboard/          GET /v1/dashboard/daily
+    dashboard/          GET /v1/dashboard/daily (+ water, latest report)
     ai/                 Meal estimates, daily insight, live session, plan recommendation, guardrails
     profile/            GET|PUT /v1/profile
     memories/           GET|POST|DELETE /v1/memories
+    foods/              Saved foods for "Pick from list"
     plans/              Generate/save/list/get/delete plans + PDF rendering
-  shared/
-    ai/                 ai-provider (contracts), gemini-provider, live-session-provider,
-                        fallback-provider, fallback-plans, provider-factory
-    auth/guest-auth.ts  Bearer-token preHandler (sha256 lookup)
-    nutrition.ts        Mifflin-St Jeor baseline (calories, macros, steps)
+    reports/            Extract (draft only), save, list, get, delete lab reports
+    water/              Water target and logs
+  domain/               Rules shared across modules, no I/O
+    nutrition.ts        Mifflin-St Jeor baseline (calories, macros)
     plans.ts            zod schemas for plan options and content
+    reports.ts          Report schemas, health-notes builder, fluid-safety markers
+  shared/
+    ai/
+      ai-provider.ts    Contracts (AiProvider, LiveSessionProvider, errors)
+      provider-factory.ts  Picks Gemini or fallback from env
+      gemini/           gemini-provider (REST client + model fallback), schemas, prompts,
+                        live-session-provider (ephemeral tokens, voice tools)
+      fallback/         Deterministic provider and template plans (no AI needed)
+    auth/guest-auth.ts  Bearer-token preHandler (sha256 lookup)
     validation.ts, errors.ts, time.ts
-drizzle/                0000 to 0005 SQL migrations + snapshots
-tests/                  api.integration.test.ts + unit tests (nutrition, plans, gemini-provider,
-                        live-session-provider, ai.service)
+drizzle/                0000 to 0007 SQL migrations + snapshots
+tests/
+  unit/                 nutrition, plans, reports, gemini-provider, live-session-provider, ai.service
+  integration/          api.integration.test.ts (real Postgres)
 ```
 
 ---
@@ -518,7 +554,7 @@ The backend loads the day's context: goal plus plan targets, the day's meals, pr
 
 ### 8.4 Personal plan recommendation (calories, macros, steps)
 
-**Deterministic baseline** (`src/shared/nutrition.ts`):
+**Deterministic baseline** (`src/domain/nutrition.ts`):
 
 | Step | Formula |
 |---|---|
@@ -720,7 +756,7 @@ sequenceDiagram
 
 ### 9.7 Steps (paused)
 
-> Steps are hidden while healthFlip focuses on meals. `src/steps.ts` and HealthKit stay installed but are no longer called from `App.tsx`. The flow below describes the earlier behaviour, kept for when steps return.
+> Steps are hidden while healthFlip focuses on meals. `src/features/steps/steps.ts` and HealthKit stay installed but are no longer called from `App.tsx`. The flow below describes the earlier behaviour, kept for when steps return.
 
 ```mermaid
 flowchart TD
@@ -763,7 +799,7 @@ flowchart LR
 ### 10.2 State and data
 
 - **Server state:**
-  - It is loaded via `src/api/client.ts` and held in `useState` in `Root`: dashboard, profile, insight and steps.
+  - It is loaded via `src/services/api/` and held in `useState` in `Root`: dashboard, profile, insight and steps.
   - It is refreshed after mutations.
   - Version counters (`historyVersion`, `plansVersion`) tell cached tabs to refetch.
 - **The `request()` helper** adds JSON headers and the guest bearer token. It throws `Error(message)` with the server's readable message.
@@ -771,16 +807,15 @@ flowchart LR
 
 ### 10.3 Flip UI components
 
-- **`ParticleOrb`** (`flipOrb.tsx`):
-  - 240 points on a sphere, drawn with Skia `PictureRecorder` inside a Reanimated `useDerivedValue`.
-  - `useFrameCallback` advances time, rotation and smoothed amplitude: `amp += (target − amp)·min(1, dt·10)`; the speaking pulse decays by `0.03^dt`.
-  - Mic RMS (×6) and per-word pulses are Reanimated shared values, so no React re-renders happen per frame.
-  - Muted freezes the loop and draws greyscale. The mini variant (90 points) sits in the Ask Flip pill.
+- **`ParticleOrb`** (`src/components/flip/ParticleOrb.tsx`):
+  - 18 dots drawn as plain native views and animated on the UI thread with Reanimated. There's no GPU canvas library, which keeps the app smaller.
+  - Each dot orbits and scales with the phase; mic RMS and per-word pulses are Reanimated shared values, so no React re-renders happen per frame.
+  - Muted draws greyscale. The mini variant sits in the Ask Flip pill and chat headers.
 - **`FlipReveal`** (`flip.tsx`): a 550 ms `cubic-bezier(.6,0,.2,1)` circular clip, built as a growing rounded container with a counter-offset child.
 - **Transcript:** Flip's lines have no bubble (20/600); user bubbles are dark with radius 22/22/6/22. Lines type in with a 2 px caret, and full text is exposed through accessibility labels.
 - **Meal card:** meal-type tag, protein, the dish with its portion and kcal, a dashed divider, the total, and **Add to {meal}**, which becomes "Logged to {meal}".
 
-### 10.4 Design tokens (`src/ui.tsx`)
+### 10.4 Design tokens (`src/constants/theme.ts`)
 
 | Token | Value |
 |---|---|
@@ -811,7 +846,7 @@ Fonts are the system font for now; Figtree, which the design specifies, is not y
 | Podfile `post_install` | `ios/Podfile` | Adds `@react-native-healthkit/core/ios` to the `ReactNativeHealthkit` target's `SWIFT_INCLUDE_PATHS`. Core imports a private Swift module that dependents must resolve under explicit module builds. |
 | `ENABLE_USER_SCRIPT_SANDBOXING = NO` | Xcode project | React Native writes `ip.txt` during the build |
 
-**When a native rebuild is required:** after adding or upgrading any library with native code (Skia, Nitro, HealthKit, blob-util…). A Metro reload only updates JavaScript. When native code is missing at runtime, the symptom is an error like `cannot read properties of undefined (VoiceConversationScreen)`.
+**When a native rebuild is required:** after adding or upgrading any library with native code (Nitro, HealthKit, blob-util, the pickers…) or changing the Swift module or widget. A Metro reload only updates JavaScript. When native code is missing at runtime, the symptom is an error like `cannot read properties of undefined (VoiceConversationScreen)`.
 
 **Build and install over Wi-Fi** (the RN CLI doesn't see Wi-Fi devices):
 
@@ -845,7 +880,7 @@ Latest counts: API unit **20/20**, integration **19/19**; mobile **27/27**.
 - that mute (silence) closes turns;
 - plan quality and allergen handling.
 
-**Jest mocks** (`jest.setup.js`): AsyncStorage, safe-area, FlashList, Nitro audio, HealthKit (unavailable by default), blob-util, Skia (inert canvas), and Reanimated (stable `useSharedValue`, inert frame callbacks).
+**Jest mocks** (`jest.setup.js`): AsyncStorage, safe-area, FlashList, Nitro audio, HealthKit (unavailable by default), blob-util, image and document pickers, and Reanimated (stable `useSharedValue`, inert frame callbacks).
 
 ---
 
@@ -925,7 +960,7 @@ cd ../healthFlip && npm install && npm start
 
 ## 15b. Health reports, water reminders and the widget
 
-**Reports** (`src/reports.tsx`, API `src/modules/reports/`):
+**Reports** (`src/screens/reports/ReportsScreen.tsx`, API `src/modules/reports/`):
 - **Upload:** photos (up to 5 pages, 1700 px) or one PDF; one upload stays under ~3 MB because Vercel caps request bodies at 4.5 MB (`@react-native-documents/picker`, read as base64 with blob-util).
 - **Reading:** `POST /v1/reports/extract` sends the pages inline to Gemini (`extractReport`, 60 s). It returns a draft and **stores nothing**: no file and no values.
 - **Review:** you untick misread values, then `POST /v1/reports` re-screens and saves only the confirmed values in `health_reports`.

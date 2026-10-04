@@ -41,7 +41,7 @@ flowchart LR
 
 | Layer | Technologies |
 |---|---|
-| Mobile | React Native 0.87, React 19, TypeScript, Reanimated 4, Skia (particle orb), Nitro realtime audio (live mic and speaker), image picker (photos, HEIC-aware), document picker (report PDFs), an in-repo Swift module (local reminders, widget data), a WidgetKit extension (SwiftUI), HealthKit (installed, paused), blob-util (PDF download), SVG, AsyncStorage |
+| Mobile | React Native 0.87, React 19, TypeScript, Reanimated 4 (animated particle orb), Nitro realtime audio (live mic and speaker), image picker (photos, HEIC-aware), document picker (report PDFs), an in-repo Swift module (local reminders, widget data), a WidgetKit extension (SwiftUI), HealthKit (installed, paused), blob-util (PDF download), SVG, AsyncStorage |
 | Backend | Node 22+, Fastify 5, Drizzle ORM, PostgreSQL 16, zod (validation), pdfkit (PDFs), tsx |
 | AI | Gemini REST for structured JSON (a chain of models tried in order when one runs out of quota); Gemini Live `gemini-3.8-live` for voice, with the **Sulafat** voice and function calling |
 | Tooling | Jest and Node's built-in test runner, ESLint, drizzle-kit migrations, Docker Postgres, Xcode/CocoaPods, Metro |
